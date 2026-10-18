@@ -21,7 +21,7 @@ function compactRows(rows) {
 
 function weekPreviewHtml(st, weekAbs, compact, withStatus) {
   const week = (weekAbs % progOf(st).weeks) + 1;
-  const start = addDays(parseKey(st.startDate), weekAbs * periodOf(st));
+  const { start } = cycleRange(st, weekAbs);
   const today = new Date();
   return orderFor(week, st).map((sid, i) => {
     const stat = withStatus ? sessionStatus(st, weekAbs, sid, today) : null;
@@ -36,7 +36,7 @@ function weekPreviewHtml(st, weekAbs, compact, withStatus) {
     let action = '';
     if (stat && stat.status === 'offline') action = `<button class="btn tiny ghost" data-unmark="${sid}" data-week="${weekAbs}">取消标记</button>`;
     else if (stat && stat.status !== 'app' && dayDiff(start, today) >= 0) action = `<button class="btn tiny ghost" data-mark="${sid}" data-week="${weekAbs}">标记 App 外完成</button>`;
-    return `<div class="preview ${stat ? stat.status : ''}"><div class="row between"><span class="row"><span class="tag">${sessionName(sid, week)}</span>${stat ? BADGE[stat.status] : ''}</span><span class="muted">${periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `第 ${slotOf(st, date) + 1} 天`} ${fmtDate(date)}</span></div>${lines}${action ? `<div class="row" style="justify-content:flex-end">${action}</div>` : ''}</div>`;
+    return `<div class="preview ${stat ? stat.status : ''}"><div class="row between"><span class="row"><span class="tag">${sessionName(sid, week)}</span>${stat ? BADGE[stat.status] : ''}</span><span class="muted">${periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `第 ${i + 1} 练`} ${fmtDate(date)}</span></div>${lines}${action ? `<div class="row" style="justify-content:flex-end">${action}</div>` : ''}</div>`;
   }).join('');
 }
 
@@ -48,9 +48,11 @@ function programCardHtml(cycle) {
       <table class="tm"><tr><th>循环</th><th>主项</th><th>卧推</th><th>深蹲</th></tr>
       ${PPL_CYCLES.map((c, i) => `<tr><td>${'一二三四五六'[i]}</td><td>${c.main[0]}×${c.main[1]} @${c.main[2]}%</td><td>${fmtW(roundTo(pplMax(state, cycle, 'bench') * c.main[2] / 100, state.plateInc || 2.5))}</td><td>${fmtW(roundTo(pplMax(state, cycle, 'squat') * c.main[2] / 100, state.plateInc || 2.5))}</td></tr>`).join('')}</table>
       <p class="muted">推 → 拉 → 腿 → 休，四天一循环。辅助动作 3 组 × 8–12 次（RPE 8），第六个循环减载。练完 6 个循环，下一轮卧推 +2.5kg、深蹲 +5kg。</p>
+      <label class="row check shift-opt"><input type="checkbox" data-autoshift ${autoShift() ? 'checked' : ''}>
+        <span><b>自动顺延未完成的训练</b><span class="muted small">前一天没练也没关系，后面的安排会自动往后顺延一位；推、拉、腿都练完才进入下一个循环。</span></span></label>
       <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改 1RM</button>
-        <button class="btn small ghost" data-act="postpone">这个循环没练完，整体顺延</button>
-        <button class="btn small ghost" data-act="advance">往前调一个循环</button></div></div>`;
+        ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">这个循环没练完，整体顺延</button>
+        <button class="btn small ghost" data-act="advance">往前调一个循环</button>`}</div></div>`;
   }
   if (isMike()) {
     const m = state.mike;
@@ -95,7 +97,7 @@ function renderChallenge() {
     ${programCardHtml(cycle)}`;
   for (let w = 0; w < P.weeks; w++) {
     const weekAbs = cycle * P.weeks + w;
-    const start = addDays(parseKey(state.startDate), weekAbs * periodOf());
+    const { start } = cycleRange(state, weekAbs);
     const isCur = pos && pos.weekAbs === weekAbs;
     const sts = orderFor(w + 1).slice(0, requiredFor(w + 1)).map((sid) => sessionStatus(state, weekAbs, sid, today).status);
     const nApp = sts.filter((x) => x === 'app').length, nOff = sts.filter((x) => x === 'offline').length;
@@ -121,6 +123,17 @@ function openProgramPicker() {
 }
 
 function bindChallenge() {
+  $('#view-challenge').addEventListener('change', (e) => {
+    if (e.target.dataset.autoshift === undefined) return;
+    if (!e.target.checked) {
+      // keep today's cycle when going back to the calendar: re-anchor the start date
+      const pos = position(state, new Date());
+      if (pos) state.startDate = dateKey(addDays(pos.weekStart, -pos.weekAbs * periodOf()));
+    }
+    state.autoShift = e.target.checked;
+    save(); render();
+    toast(e.target.checked ? '已开启：没练的训练会自动往后顺延' : '已关闭：按日历四天一循环');
+  });
   $('#sheet').addEventListener('click', (e) => {
     const b = e.target.closest('[data-program]');
     if (!b || !sheetCtx || sheetCtx.type !== 'program') return;

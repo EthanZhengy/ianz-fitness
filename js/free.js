@@ -381,7 +381,12 @@ function bindFree() {
         const left = orderFor(pos.week).slice(0, requiredFor(pos.week)).filter((sid) => !['app', 'offline'].includes(sessionStatus(state, pos.weekAbs, sid, t.date).status));
         const U = unitOf();
         if (!confirm(left.length ? `本${U}还有 ${left.map((x) => sessionName(x, pos.week)).join('、')} 没练，确定进入下一${U}？` : `进入第 ${pos.week % progOf().weeks + 1} ${U}？`)) return;
-        state.startDate = dateKey(addDays(parseKey(state.startDate), -periodOf()));
+        if (autoShift()) {
+          // close the current cycle now: yesterday, or today if something was already trained today
+          const todayLog = state.logs[dateKey(t.date)];
+          const brk = dateKey(todayLog && todayLog.done ? t.date : addDays(t.date, -1));
+          state.cycleBreaks = (state.cycleBreaks || []).concat(brk);
+        } else state.startDate = dateKey(addDays(parseKey(state.startDate), -periodOf()));
         save(); render(); refreshSheet();
         return toast(`已进入第 ${position(state, new Date()).week} ${U}`);
       }

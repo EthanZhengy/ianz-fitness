@@ -58,6 +58,56 @@ function slotOf(st, date) {
   if (P === 7) return weekdayIdx(date);
   return ((dayDiff(parseKey(st.startDate), date) % P) + P) % P;
 }
+/*
+ * 自动顺延 (推拉腿): a cycle only moves on once its push, pull and legs are all done (then one rest day),
+ * so a missed day shifts everything after it by one. st.cycleBreaks = days where the user skipped ahead.
+ */
+const autoShift = (st) => isPPL(st) && cur(st).autoShift !== false;
+function shiftCycles(st) {
+  st = cur(st);
+  const order = ['pplPush', 'pplPull', 'pplLegs'];
+  const ev = [];
+  Object.keys(st.logs || {}).forEach((k) => {
+    const l = st.logs[k];
+    if (k >= st.startDate && l && l.done && order.includes(l.session)) ev.push([k, 0, l.session]);
+  });
+  (st.cycleBreaks || []).forEach((k) => { if (k >= st.startDate) ev.push([k, 1]); });
+  ev.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]));
+  const cycles = [];
+  let c = { start: parseKey(st.startDate), end: null, done: [] };
+  ev.forEach(([k, isBreak, sid]) => {
+    const d = parseKey(k);
+    if (isBreak) {
+      c.end = d < c.start ? addDays(c.start, -1) : d;
+      cycles.push(c); c = { start: addDays(c.end, 1), end: null, done: [] };
+      return;
+    }
+    if (d < c.start) { // trained on the rest day: the next cycle starts right away
+      const prev = cycles[cycles.length - 1];
+      if (prev) prev.end = addDays(d, -1);
+      c.start = d;
+    }
+    if (!c.done.includes(sid)) c.done.push(sid);
+    if (order.every((x) => c.done.includes(x))) {
+      c.end = addDays(d, 1); // one rest day after the cycle
+      cycles.push(c); c = { start: addDays(d, 2), end: null, done: [] };
+    }
+  });
+  cycles.push(c);
+  return cycles;
+}
+/** First and last day of program period `weekAbs` (estimated for periods that have not started yet). */
+function cycleRange(st, weekAbs) {
+  const P = periodOf(st);
+  if (!autoShift(st)) { const start = addDays(parseKey(cur(st).startDate), weekAbs * P); return { start, end: addDays(start, P - 1) }; }
+  const cs = shiftCycles(st);
+  const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+  const open = (c) => c.end || addDays(c.start > today ? c.start : today, P - 1);
+  if (weekAbs < cs.length) return { start: cs[weekAbs].start, end: open(cs[weekAbs]) };
+  const last = cs[cs.length - 1];
+  const start = addDays(open(last), 1 + (weekAbs - cs.length) * P);
+  return { start, end: addDays(start, P - 1) };
+}
 const slotName = (st, date) => (periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `循环第 ${slotOf(st, date) + 1} 天`);
 const isTestWeek = (week, st) => week === progOf(st).weeks;
 function orderFor(week, st) {
@@ -83,8 +133,15 @@ function position(st, date) {
   const diff = dayDiff(start, date);
   if (diff < 0) return null;
   const P = periodOf(st);
-  const weekAbs = Math.floor(diff / P);
   const n = progOf(st).weeks;
+  if (autoShift(st)) {
+    const cs = shiftCycles(st);
+    let i = cs.length - 1;
+    while (i > 0 && cs[i].start > date) i--;
+    const end = cs[i].end || addDays(cs[i].start > date ? cs[i].start : date, P - 1);
+    return { weekAbs: i, cycle: Math.floor(i / n), week: (i % n) + 1, weekStart: cs[i].start, weekEnd: end, shift: true };
+  }
+  const weekAbs = Math.floor(diff / P);
   return {
     weekAbs, cycle: Math.floor(weekAbs / n), week: (weekAbs % n) + 1,
     weekStart: addDays(start, weekAbs * P), weekEnd: addDays(start, weekAbs * P + P - 1),
@@ -99,7 +156,7 @@ function scheduledFor(st, date, week) {
 /** Sessions marked done in the program week containing `date` (optionally excluding one day). */
 function doneSessions(st, pos, excludeKey) {
   const out = [];
-  for (let i = 0; i < periodOf(st); i++) {
+  for (let i = 0; i <= dayDiff(pos.weekStart, pos.weekEnd); i++) {
     const k = dateKey(addDays(pos.weekStart, i));
     const l = st.logs[k];
     if (k !== excludeKey && l && l.done && l.session && l.session !== 'rest') out.push(l.session);
@@ -126,7 +183,11 @@ function recommend(st, date) {
   const required = order.slice(0, requiredFor(pos.week, st)).filter((s) => !done.includes(s));
   if (!required.length) {
     if (!isMike(st) && pos.week === 12 && !done.includes('press')) return { session: 'rest', reason: '三项测试已完成，推举测试可选' };
-    return { session: 'rest', reason: `本${unitOf(st)}训练已全部完成 🎉 好好恢复` };
+    return { session: 'rest', reason: pos.shift ? '这个循环练完了 🎉 今天休息，明天开始下一个循环' : `本${unitOf(st)}训练已全部完成 🎉 好好恢复` };
+  }
+  if (pos.shift) {
+    const i = order.indexOf(required[0]);
+    return { session: required[0], reason: `第 ${pos.week} 循环第 ${i + 1} 练：${SESSION_LABEL[required[0]]}${i > 0 && !doneOn(st, addDays(date, -1)) ? '（前面没练的已自动往后顺延）' : ''}` };
   }
   const yesterday = doneOn(st, addDays(date, -1));
   const clash = (s) => yesterday && isLower(yesterday) && isLower(s);
@@ -165,6 +226,7 @@ function remainingPlan(st, date, todaySession) {
   const left = order.slice(0, requiredFor(pos.week, st)).filter((s) => !done.includes(s));
   if (!left.length) return { plan: [], unplaced: [] };
 
+  if (pos.shift) return { plan: left.map((s, i) => ({ date: addDays(date, i + 1), session: s })), unplaced: [] };
   const after = [];
   for (let d = addDays(date, 1); d <= pos.weekEnd; d = addDays(d, 1)) after.push(d);
   const sched = after.filter((d) => st.schedule.includes(slotOf(st, d)));
@@ -561,5 +623,5 @@ if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
     position, recommend, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
-    progOf, isMike, isPPL, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
+    progOf, isMike, isPPL, autoShift, shiftCycles, cycleRange, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
 }

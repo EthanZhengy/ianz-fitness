@@ -218,8 +218,8 @@ function trainingHistory(st) {
 
 /** Completion status of one session in a program week: app / offline / missed / upcoming. */
 function sessionStatus(st, weekAbs, sid, today) {
-  const P = periodOf(st);
-  const start = addDays(parseKey(st.startDate), weekAbs * P);
+  const { start, end } = cycleRange(st, weekAbs);
+  const P = dayDiff(start, end) + 1;
   for (let i = 0; i < P; i++) {
     const k = dateKey(addDays(start, i));
     const l = st.logs[k];
@@ -236,8 +236,8 @@ function sessionStatus(st, weekAbs, sid, today) {
  * otherwise another free day of that week, never a future day.
  */
 function markOffline(st, weekAbs, sid, today) {
-  const P = periodOf(st);
-  const start = addDays(parseKey(st.startDate), weekAbs * P);
+  const { start, end } = cycleRange(st, weekAbs);
+  const P = dayDiff(start, end) + 1;
   const idx = orderFor((weekAbs % progOf(st).weeks) + 1, st).indexOf(sid);
   const pref = addDays(start, st.schedule[idx] ?? idx);
   const days = Array.from({ length: P }, (_, i) => addDays(start, i))
@@ -250,8 +250,8 @@ function markOffline(st, weekAbs, sid, today) {
   return true;
 }
 function unmarkOffline(st, weekAbs, sid) {
-  const P = periodOf(st);
-  const start = addDays(parseKey(st.startDate), weekAbs * P);
+  const { start, end } = cycleRange(st, weekAbs);
+  const P = dayDiff(start, end) + 1;
   for (let i = 0; i < P; i++) {
     const k = dateKey(addDays(start, i));
     const l = st.logs[k];
@@ -268,7 +268,7 @@ function weekly(st, today, hist = trainingHistory(st)) {
   const prog = progOf(st).id;
   for (let w = 0; w <= cur.weekAbs; w++) {
     const week = (w % n) + 1;
-    const start = addDays(parseKey(st.startDate), w * periodOf(st));
+    const { start } = cycleRange(st, w);
     const hs = hist.filter((h) => h.program === prog && h.pos.weekAbs === w);
     weeks.push({
       weekAbs: w, week, cycle: Math.floor(w / n), start,
@@ -301,7 +301,7 @@ function tmSeries(st, lift, today) {
   const n = progOf(st).weeks;
   const last = cur ? (cur.cycle + 1) * n - 1 : n - 1;
   return Array.from({ length: last + 1 }, (_, w) => ({
-    weekAbs: w, date: addDays(parseKey(st.startDate), w * periodOf(st)),
+    weekAbs: w, date: cycleRange(st, w).start,
     // 5/3/1 plots its training max; the Mike plan works straight off the bench 1RM
     tm: isPPL(st) ? (['bench', 'squat'].includes(lift) ? roundTo(pplMax(st, Math.floor(w / n), lift), 0.5) : null)
       : isMike(st) ? (lift === 'bench' ? roundTo(mikeMax(st, Math.floor(w / n), 'bench'), 0.5) : null)

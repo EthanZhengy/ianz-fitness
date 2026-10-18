@@ -182,12 +182,15 @@ function statsTabHtml() {
     <p class="muted">${isPPL() ? '减载循环（第 6 循环）' : isMike() ? '减量周' : '减载周（第 4、8 周）'}训练量下降是正常的。</p></div>`;
 
   // Calendar
-  const firstW = Math.max(0, pos.weekAbs - 11);
+  // weekly plans: one column per program week; cycle plans: plain calendar weeks (Mon–Sun)
+  const calWeeks = periodOf() !== 7;
+  const firstW = calWeeks ? 0 : Math.max(0, pos.weekAbs - 11);
+  const lastW = calWeeks ? 11 : pos.weekAbs;
   const cells = [], labels = [];
-  for (let w = firstW; w <= pos.weekAbs; w++) {
-    const start = addDays(parseKey(state.startDate), w * periodOf());
-    labels.push((w - firstW) % 3 === 0 ? `${periodOf() === 7 ? 'W' : 'C'}${(w % progOf().weeks) + 1}` : '');
-    cells.push(Array.from({ length: periodOf() }, (_, d) => {
+  for (let w = firstW; w <= lastW; w++) {
+    const start = calWeeks ? addDays(mondayOf(today), (w - 11) * 7) : addDays(parseKey(state.startDate), w * 7);
+    labels.push((w - firstW) % 3 === 0 ? (calWeeks ? `${start.getMonth() + 1}/${start.getDate()}` : `W${(w % progOf().weeks) + 1}`) : '');
+    cells.push(Array.from({ length: 7 }, (_, d) => {
       const date = addDays(start, d);
       const l = state.logs[dateKey(date)];
       const label = `${fmtDate(date)} ${WEEKDAYS[weekdayIdx(date)]}`;
@@ -200,7 +203,7 @@ function statsTabHtml() {
   }
   html += `<div class="card"><h2>完成热力图</h2>
     <div class="legend"><span><i class="lg s1"></i>App 完成</span><span><i class="lg s1soft"></i>App 外完成</span><span><i class="lg none"></i>未训练</span></div>
-    ${periodOf() === 7 ? calendarChart(cells, labels) : calendarChart(cells, labels, ['推', '拉', '腿', '休'])}
+    ${calendarChart(cells, labels)}
     <h3>每${unitOf()}完成情况</h3>
     <div class="weekbar">${recent.map((w) => `<span class="${w.app + w.offline >= w.required ? 'full' : w.current ? 'cur' : ''}" data-tip="第 ${w.week} ${unitOf()} ${w.app + w.offline}/${w.required}">${w.app + w.offline}/${w.required}</span>`).join('')}</div></div>`;
   return html + bodyweightCard(today);
