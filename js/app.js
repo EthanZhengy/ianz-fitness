@@ -13,7 +13,13 @@ function render() {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${mode}`));
   $('.tabbar').innerHTML = TABS.map(([k, label, icon]) => `<button data-view="${k}" class="${currentView === k ? 'active' : ''}">${ICONS[icon]}<span>${label}</span>${k === 'friends' && social.incoming.length ? `<i class="dot-badge">${social.incoming.length}</i>` : ''}</button>`).join('');
   if (wiz) return renderWizard();
-  RENDER[currentView]();
+  try { RENDER[currentView](); } catch (err) {
+    // never leave a blank page: show what happened and a way back
+    console.error(err);
+    const el = $(`#view-${currentView}`);
+    if (el) el.innerHTML = `<div class="card center pad"><h2>这个页面出了点问题 😵</h2><p class="muted">数据没有丢，先回首页看看。如果一直这样，把这句发给我们：<br><code>${esc(String(err && err.message || err)).slice(0, 160)}</code></p>
+      <button class="btn block" data-recover>回到训练首页</button></div>`;
+  }
   if (restTimer) drawRest();
   updateBadge();
 }
@@ -27,6 +33,10 @@ $('.tabbar').addEventListener('click', (e) => {
   render(); window.scrollTo(0, 0);
 });
 $('[data-fab]').addEventListener('click', openFabMenu);
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-recover]')) return;
+  wkMode = 'plan'; currentView = 'home'; homeTab = 'today'; render(); window.scrollTo(0, 0);
+});
 
 bindCloud(); bindWizard(); bindHome(); bindSheet(); bindWorkout(); bindFree(); bindChallenge(); bindLibrary(); bindHistory(); bindNutrition(); bindSettings(); bindMe(); bindFriends(); bindCommunity(); bindMarket(); bindStories(); bindQuotes(); bindPush(); bindPhotos(); bindExHistory();
 

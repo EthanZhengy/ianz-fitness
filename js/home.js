@@ -3,12 +3,19 @@
 
 let homeTab = 'today';
 
+/** Whether a session id can be built by the active plan (its own sessions, its custom days, or rest). */
+function sessionInPlan(sid) {
+  if (sid === 'rest') return true;
+  if (isCustomDay(sid)) return (state.customDays[state.program] || []).some((d) => d.id === sid);
+  return !!SESSIONS[sid] && programOfSession(sid) === progOf().id;
+}
 function todayInfo(date = new Date()) {
   const key = dateKey(date);
   const log = logFor(key);
   const pos = position(state, date);
   const rec = recommend(state, date);
-  const sid = log.session || rec.session;
+  // a session picked under another plan (before switching plans) doesn't exist in this one: use the recommendation
+  const sid = log.session && sessionInPlan(log.session) ? log.session : rec.session;
   const kind = sid === 'rest' || !pos ? 'rest' : LOWER[sid] ? 'lower' : 'upper';
   return { date, key, log, pos, rec, sid, kind, n: nutritionFor(state, kind) };
 }
@@ -149,6 +156,7 @@ function homeToday(t) {
     return html;
   }
   const s = sessionWithExtras(state, t.date, sid, log);
+  if (!s) return html;
   const ticks = (k) => (log.sets[`${sid}:${k}`] || []).filter(Boolean).length;
   const nSets = (b) => blockRows(state, log, sid, b).length;
   const total = s.blocks.reduce((a, b) => a + nSets(b), 0);
@@ -279,6 +287,7 @@ function renderWorkout() {
   const t = todayInfo();
   if (!t.pos || t.sid === 'rest') { currentView = 'home'; return render(); }
   const s = sessionWithExtras(state, t.date, t.sid, t.log);
+  if (!s) { currentView = 'home'; return render(); }
   const doneToday = t.log.done && t.log.session === t.sid;
   const w = workoutStats(s, t.log, t.sid);
   $('#view-workout').innerHTML = `<div class="wk-head"><button class="icon-round" data-act="back" aria-label="返回">${ICONS.back}</button>

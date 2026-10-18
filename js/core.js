@@ -1,7 +1,7 @@
 'use strict';
 /* Shared state, helpers, reminders and calendar export. */
 
-const APP_VERSION = '1.29.1';
+const APP_VERSION = '1.29.2';
 const STORAGE_KEY = 'trainer-531-v2';
 const ALL_EQUIP = Object.keys(EQUIPMENT);
 const GYM_EQUIP = ALL_EQUIP.filter((e) => e !== 'ssb');
@@ -135,7 +135,7 @@ function download(name, content, type) {
 function remindersFor(date) {
   const rec = recommend(state, date);
   const log = state.logs[dateKey(date)];
-  const sid = (log && log.session) || rec.session;
+  const sid = log && log.session && sessionInPlan(log.session) ? log.session : rec.session;
   const pos = position(state, date);
   const kind = sid === 'rest' || !pos ? 'rest' : LOWER[sid] ? 'lower' : 'upper';
   const n = nutritionFor(state, kind);
@@ -143,7 +143,7 @@ function remindersFor(date) {
   const list = [];
   if (sid === 'rest' || !pos) list.push({ time: state.reminders.morning, title: '今天休息 🧘', body: `${rec.reason}${nut}` });
   else {
-    list.push({ time: state.reminders.morning, title: `今天练：${sessionName(sid, pos.week)} 💪（第${pos.week}周）`, body: `${sessionSummary(state, date, sid, 'normal')}${nut}` });
+    list.push({ time: state.reminders.morning, title: `今天练：${sessionName(sid, pos.week)} 💪（第${pos.week}${unitOf()}）`, body: `${sessionSummary(state, date, sid, 'normal')}${nut}` });
     if (state.reminders.meals) list.push({ time: fromMin(toMin(state.trainTime) - 15), title: '15 分钟后开始训练', body: sessionName(sid, pos.week) });
   }
   if (state.reminders.meals && dietOn()) mealsFor(state, n).forEach((m) => list.push({ time: m.time, title: `该吃${m.name}了`, body: `${m.food}\n≈蛋白 ${m.protein}g · 碳水 ${m.carbs}g · 脂肪 ${m.fat}g` }));
@@ -197,7 +197,8 @@ function exportIcs() {
     const pos = position(state, date);
     if (!pos) continue;
     // Future days follow the fixed schedule; today follows what you picked
-    const sid = i === 0 ? (state.logs[dateKey(date)]?.session || recommend(state, date).session) : scheduledFor(state, date, pos.week);
+    const picked = i === 0 && state.logs[dateKey(date)]?.session;
+    const sid = i === 0 ? (picked && sessionInPlan(picked) ? picked : recommend(state, date).session) : scheduledFor(state, date, pos.week);
     if (!sid || sid === 'rest') continue;
     const ymd = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
     const [h, m] = state.trainTime.split(':');
