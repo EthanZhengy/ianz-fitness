@@ -178,9 +178,9 @@ function openTemplates(keepSort = false) {
   tplIds = order.concat(days.map((d) => d.id));
   const ids = tplOrdered(tplIds);
   const left = order.slice(0, requiredFor(pos.week)).filter((sid) => !['app', 'offline'].includes(status(sid)));
-  openSheet('训练模板', `<div class="tpl-head row between"><div><b>${esc(progOf().name)}</b><div class="muted">第 ${pos.cycle + 1} 轮 · 第 ${pos.week} 周 ${esc(weekName(pos.week))} · 本周已练 ${doneN}/${requiredFor(pos.week)}</div></div>
-      <button class="btn small ${left.length ? 'ghost' : ''}" data-tplact="next">进入下一周 ›</button></div>
-    <div class="row between tpl-sorthead"><p class="muted small">${tplSort ? '用 ↑ ↓ 调整训练日的顺序，调好点「完成」。' : '本周的训练不用按顺序，根据今天的状态自由选一个，这周练完就行。⭐ 是推荐。点 ＋ 可以往模板里加自己的动作。'}</p>
+  openSheet('训练模板', `<div class="tpl-head row between"><div><b>${esc(progOf().name)}</b><div class="muted">第 ${pos.cycle + 1} 轮 · 第 ${pos.week} ${unitOf()} ${esc(weekName(pos.week))} · 本${unitOf()}已练 ${doneN}/${requiredFor(pos.week)}</div></div>
+      <button class="btn small ${left.length ? 'ghost' : ''}" data-tplact="next">进入下一${unitOf()} ›</button></div>
+    <div class="row between tpl-sorthead"><p class="muted small">${tplSort ? '用 ↑ ↓ 调整训练日的顺序，调好点「完成」。' : `本${unitOf()}的训练不用按顺序，根据今天的状态自由选一个，这${unitOf() === '周' ? '周' : '个循环'}练完就行。⭐ 是推荐。点 ＋ 可以往模板里加自己的动作。`}</p>
       <button class="btn tiny ${tplSort ? '' : 'ghost'}" data-tplact="sort">${tplSort ? '完成' : '⇅ 调整顺序'}</button></div>
     <div class="${tplSort ? 'tpl-sorting' : ''}">${ids.map((id) => rowHtml[id]).join('')}</div>
     ${tplSort ? '' : '<button class="btn ghost block" data-tplact="newday">＋ 新增训练日</button>'}
@@ -379,10 +379,11 @@ function bindFree() {
       if (ds.tplact === 'next') {
         const pos = t.pos;
         const left = orderFor(pos.week).slice(0, requiredFor(pos.week)).filter((sid) => !['app', 'offline'].includes(sessionStatus(state, pos.weekAbs, sid, t.date).status));
-        if (!confirm(left.length ? `本周还有 ${left.map((x) => sessionName(x, pos.week)).join('、')} 没练，确定进入下一周？` : `进入第 ${pos.week % progOf().weeks + 1} 周？`)) return;
-        state.startDate = dateKey(addDays(parseKey(state.startDate), -7));
+        const U = unitOf();
+        if (!confirm(left.length ? `本${U}还有 ${left.map((x) => sessionName(x, pos.week)).join('、')} 没练，确定进入下一${U}？` : `进入第 ${pos.week % progOf().weeks + 1} ${U}？`)) return;
+        state.startDate = dateKey(addDays(parseKey(state.startDate), -periodOf()));
         save(); render(); refreshSheet();
-        return toast(`已进入第 ${position(state, new Date()).week} 周`);
+        return toast(`已进入第 ${position(state, new Date()).week} ${U}`);
       }
       if (ds.tplact === 'newday') return openDayForm(null);
       if (ds.tplact === 'sort') { tplSort = !tplSort; return openTemplates(true); }

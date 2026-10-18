@@ -5,7 +5,7 @@ const LIFTS = ['press', 'deadlift', 'bench', 'squat'];
 const LIFT_NAMES = { press: '推举', deadlift: '硬拉', bench: '卧推', squat: '深蹲' };
 // TM increment applied at the start of week 5 and week 9 (and each new cycle).
 const TM_INC = { press: 2.5, bench: 2.5, deadlift: 5, squat: 5 };
-const LOWER = { deadlift: true, squat: true };
+const LOWER = { deadlift: true, squat: true, pplLegs: true };
 
 /**
  * One training session per main lift, as in the program:
@@ -20,10 +20,15 @@ const SESSIONS = {
   mike1: { main: 'bench', program: 'mike' },
   mike2: { main: 'bench', program: 'mike' },
   mikeTest: { main: 'bench', program: 'mike' },
+  // 三分化 5+1（推 / 拉 / 腿）
+  pplPush: { main: 'bench', program: 'ppl' },
+  pplPull: { program: 'ppl' },
+  pplLegs: { main: 'squat', program: 'ppl' },
 };
 const SESSION_ORDER = ['press', 'deadlift', 'bench', 'squat'];
 const TEST_ORDER = ['deadlift', 'bench', 'squat', 'press']; // week 12; press test is optional
-const SESSION_LABEL = { press: '推举日', deadlift: '硬拉日', bench: '卧推日', squat: '深蹲日', mike1: '第一推（胸）', mike2: '第二推（手臂）', mikeTest: '卧推极限测试' };
+const SESSION_LABEL = { press: '推举日', deadlift: '硬拉日', bench: '卧推日', squat: '深蹲日', mike1: '第一推（胸）', mike2: '第二推（手臂）', mikeTest: '卧推极限测试',
+  pplPush: '推（胸·肩·三头）', pplPull: '拉（背·二头）', pplLegs: '腿（腿·肩）' };
 
 /**
  * Week definitions transcribed from the "3个月力量训练挑战计划".
@@ -68,6 +73,45 @@ const PROGRAMS = {
     id: 'mike', name: 'Mike 卧推增力计划', short: '卧推增力', weeks: 16, days: 2,
     desc: '专攻卧推的 16 周计划：一周两推，4 周容量储备 → 11 周力量储备 → 第 16 周测极限。其他部位照常训练。',
     defaultSchedule: [0, 3],
+  },
+  ppl: {
+    id: 'ppl', name: '三分化 5+1 计划（推·拉·腿）', short: '推拉腿', weeks: 6, days: 3, period: 4, unit: '循环',
+    desc: '推 → 拉 → 腿 → 休，四天一循环，共 6 个循环：5 个循环逐步加重 + 1 个减载循环。卧推、深蹲按 1RM 百分比，辅助动作 3 组 × 8–12 次（RPE 8）。',
+    defaultSchedule: [0, 1, 2],
+  },
+};
+
+/*
+ * 三分化周期训练（推·拉·腿｜四天一循环 5+1 精炼版）, transcribed from the plan spreadsheet.
+ * main: [sets, reps, % of 1RM, RPE] for the bench (推) and squat (腿) main lifts.
+ * Accessories are always 3 × 8–12 at RPE 8; the deload cycle drops their weight by 20% (RPE 6).
+ */
+const PPL_CYCLES = [
+  { main: [4, 6, 70, '6.5–7.5'], name: '基准循环', note: '建立基准负荷与动作模式' },
+  { main: [4, 5, 75, '7–8'], name: '递增循环一', note: '负荷提升' },
+  { main: [3, 5, 80, '8'], name: '递增循环二', note: '强度攀升' },
+  { main: [3, 4, 85, '8.5'], name: '高强循环', note: '力量突破' },
+  { main: [3, 3, 88, '9'], name: '极限峰值循环', note: '小周期顶峰冲击' },
+  { main: [2, 5, 60, '5–6'], name: '减载循环', note: '疲劳清空与超量恢复', deload: true },
+].map((c, i) => ({ ...c, name: `循环${'一二三四五六'[i]} · ${c.name}` }));
+const PPL_DAYS = {
+  pplPush: {
+    warmup: '热身：胸椎灵活性活动 + 泡沫轴滚背胸 + 肩袖弹力带外旋 2 组 + 杠铃空杆卧推逐步热身',
+    mainName: '杠铃卧推', mainImg: 'Barbell_Bench_Press_-_Medium_Grip',
+    acc: [['史密斯推举', 'Smith_Machine_Overhead_Shoulder_Press', 'shoulder', '2–3 分钟'], ['器械推胸', 'Machine_Bench_Press', 'chest', '2–3 分钟'],
+      ['蝴蝶机夹胸', 'Butterfly', 'chest', '1.5–2 分钟'], ['直杆绳索下压', 'Triceps_Pushdown', 'tri', '1.5–2 分钟']],
+  },
+  pplPull: {
+    warmup: '热身：泡沫轴滚背 + 弹力带肩胛下压引体激活 + 猫牛式 + 引体向上轻量热身',
+    acc: [['引体向上', 'Pullups', 'back', '2–3 分钟', '自重 / 负重'], ['悍马机划船', 'Leverage_High_Row', 'back', '2–3 分钟'],
+      ['对握高位下拉 / 直臂下压', 'Close-Grip_Front_Lat_Pulldown', 'back', '1.5–2 分钟'], ['杠铃弯举 / 器械弯举', 'Barbell_Curl', 'bi', '1.5–2 分钟'],
+      ['上斜哑铃弯举', 'Incline_Dumbbell_Curl', 'bi', '1.5–2 分钟']],
+  },
+  pplLegs: {
+    warmup: '热身：泡沫轴滚股四 / 髂胫束 + 抱膝开髋 + 脚踝活动度 + 杠铃空杆深蹲逐步热身',
+    mainName: '杠铃深蹲', mainImg: 'Barbell_Full_Squat',
+    acc: [['腿举', 'Leg_Press', 'leg', '2–3 分钟'], ['腿弯举', 'Lying_Leg_Curls', 'leg', '1.5–2 分钟'],
+      ['站姿器械侧平举', 'Side_Lateral_Raise', 'shoulder', '1.5 分钟'], ['蝴蝶机反向飞鸟', 'Reverse_Machine_Flyes', 'shoulder', '1.5 分钟']],
   },
 };
 
@@ -283,5 +327,5 @@ const DAY_FIT = {
 
 if (typeof module !== 'undefined') {
   module.exports = { LIFTS, LIFT_NAMES, TM_INC, LOWER, SESSIONS, SESSION_ORDER, TEST_ORDER, SESSION_LABEL,
-    WEEKS, EQUIPMENT, INJURIES, VARIANTS, EXERCISES, SLOT_NAMES, DAY_FIT, LIB_CATS, MUSCLE_CAT, LIFT_CAT, EQ_FILTERS, primaryEq, EX_IMG, exImgUrl, FOODS, PROGRAMS, MIKE_WEEKS, MIKE_WARMUP, MIKE_VARIANTS };
+    WEEKS, EQUIPMENT, INJURIES, VARIANTS, EXERCISES, SLOT_NAMES, DAY_FIT, LIB_CATS, MUSCLE_CAT, LIFT_CAT, EQ_FILTERS, primaryEq, EX_IMG, exImgUrl, FOODS, PROGRAMS, MIKE_WEEKS, PPL_CYCLES, PPL_DAYS, MIKE_WARMUP, MIKE_VARIANTS };
 }

@@ -137,12 +137,14 @@ function statsTabHtml() {
 
   let html = `<div class="tiles">
     <div class="tile"><b>${hist.length}</b><span>累计训练</span><small>App ${nApp} · App 外 ${nOff}</small></div>
-    <div class="tile"><b>${streak(weeks)}<i>周</i></b><span>连续完成</span><small>每周练满才算</small></div>
+    <div class="tile"><b>${streak(weeks)}<i>${unitOf()}</i></b><span>连续完成</span><small>每${unitOf()}练满才算</small></div>
     <div class="tile"><b>${rate}<i>%</i></b><span>本轮完成率</span><small>第 ${pos.cycle + 1} 轮</small></div>
     <div class="tile"><b>${(totalVol / 1000).toFixed(1)}<i>吨</i></b><span>总训练量</span><small>主项 + 第二主项</small></div>
   </div>`;
 
-  // Strength curve
+  // Strength curve (推拉腿 only has bench and squat main lifts)
+  const chartLifts = isPPL() ? ['bench', 'squat'] : LIFTS;
+  if (!chartLifts.includes(statsLift)) statsLift = chartLifts[0];
   const tm = tmSeries(state, statsLift, today);
   const e1 = e1rmSeries(hist, statsLift);
   const tests = e1.filter((p) => p.src === 'test');
@@ -155,13 +157,13 @@ function statsTabHtml() {
   ];
   const gain = pr.best ? pr.best.value - pr.start : null;
   html += `<div class="card"><h2>力量曲线</h2>
-    <div class="chips">${LIFTS.map((l) => chip(LIFT_NAMES[l], `data-lift="${l}"`, statsLift === l)).join('')}</div>
-    <div class="legend"><span><i class="lg ref dashed"></i>${isMike() ? '计划 1RM' : '训练最大重量 TM'}</span><span><i class="lg s1 dot"></i>估算 1RM（"+"组）</span><span><i class="lg s1 diamond"></i>测试 1RM</span></div>
+    <div class="chips">${chartLifts.map((l) => chip(LIFT_NAMES[l], `data-lift="${l}"`, statsLift === l)).join('')}</div>
+    <div class="legend"><span><i class="lg ref dashed"></i>${isMike() || isPPL() ? '计划 1RM' : '训练最大重量 TM'}</span><span><i class="lg s1 dot"></i>估算 1RM（"+"组）</span><span><i class="lg s1 diamond"></i>测试 1RM</span></div>
     ${lineChart({ series })}
     <div class="kv"><span>起始 1RM</span><b>${fmtW(pr.start)}kg</b></div>
     <div class="kv"><span>最佳估算 1RM</span><b>${pr.best ? `${fmtW(pr.best.value)}kg` : '—'}${gain !== null ? ` <em class="${gain >= 0 ? 'up' : 'down'}">${gain >= 0 ? '+' : ''}${fmtW(gain)}</em>` : ''}</b></div>
     <div class="kv"><span>App 记录的最大重量</span><b>${pr.heaviest ? `${fmtW(pr.heaviest.w)}kg × ${pr.heaviest.reps}` : '—'}</b></div>
-    ${amr.length ? '' : '<p class="muted">在带 "+" 的组里填写实际次数，就能看到估算 1RM 曲线。</p>'}
+    ${amr.length ? '' : isPPL() ? '<p class="muted">完成卧推 / 深蹲的组并打勾，就能看到估算 1RM 曲线。</p>' : '<p class="muted">在带 "+" 的组里填写实际次数，就能看到估算 1RM 曲线。</p>'}
     ${e1.length ? `<details><summary class="muted">查看数据表</summary><table class="tm">
       <tr><th>日期</th><th>重量×次数</th><th>1RM</th></tr>
       ${e1.slice().reverse().map((p) => `<tr><td>${fmtDate(p.date)}</td><td>${fmtW(p.w)}×${p.reps}${p.src === 'test' ? '（测试）' : ''}</td><td>${fmtW(p.value)}</td></tr>`).join('')}</table></details>` : ''}
@@ -170,22 +172,22 @@ function statsTabHtml() {
   // Weekly volume
   const recent = weeks.slice(-12);
   const bars = recent.map((w) => ({
-    label: `W${w.week}`,
-    tip: `第 ${w.cycle + 1} 轮第 ${w.week} 周 · ${w.app + w.offline}/${w.required} 次 · App ${(w.appVolume / 1000).toFixed(1)} 吨 · App 外 ${(w.offlineVolume / 1000).toFixed(1)} 吨`,
+    label: `${periodOf() === 7 ? 'W' : 'C'}${w.week}`,
+    tip: `第 ${w.cycle + 1} 轮第 ${w.week} ${unitOf()} · ${w.app + w.offline}/${w.required} 次 · App ${(w.appVolume / 1000).toFixed(1)} 吨 · App 外 ${(w.offlineVolume / 1000).toFixed(1)} 吨`,
     segments: [{ value: w.appVolume / 1000, cls: 's1' }, { value: w.offlineVolume / 1000, cls: 's1soft' }],
   }));
-  html += `<div class="card"><h2>每周训练量 <span class="muted">（吨）</span></h2>
+  html += `<div class="card"><h2>每${unitOf()}训练量 <span class="muted">（吨）</span></h2>
     <div class="legend"><span><i class="lg s1"></i>App 记录</span><span><i class="lg s1soft"></i>App 外（按计划估算）</span></div>
     ${barChart({ bars })}
-    <p class="muted">减载周（第 4、8 周）训练量下降是正常的。</p></div>`;
+    <p class="muted">${isPPL() ? '减载循环（第 6 循环）' : isMike() ? '减量周' : '减载周（第 4、8 周）'}训练量下降是正常的。</p></div>`;
 
   // Calendar
   const firstW = Math.max(0, pos.weekAbs - 11);
   const cells = [], labels = [];
   for (let w = firstW; w <= pos.weekAbs; w++) {
-    const start = addDays(parseKey(state.startDate), w * 7);
-    labels.push((w - firstW) % 3 === 0 ? `W${(w % progOf().weeks) + 1}` : '');
-    cells.push(Array.from({ length: 7 }, (_, d) => {
+    const start = addDays(parseKey(state.startDate), w * periodOf());
+    labels.push((w - firstW) % 3 === 0 ? `${periodOf() === 7 ? 'W' : 'C'}${(w % progOf().weeks) + 1}` : '');
+    cells.push(Array.from({ length: periodOf() }, (_, d) => {
       const date = addDays(start, d);
       const l = state.logs[dateKey(date)];
       const label = `${fmtDate(date)} ${WEEKDAYS[weekdayIdx(date)]}`;
@@ -198,9 +200,9 @@ function statsTabHtml() {
   }
   html += `<div class="card"><h2>完成热力图</h2>
     <div class="legend"><span><i class="lg s1"></i>App 完成</span><span><i class="lg s1soft"></i>App 外完成</span><span><i class="lg none"></i>未训练</span></div>
-    ${calendarChart(cells, labels)}
-    <h3>每周完成情况</h3>
-    <div class="weekbar">${recent.map((w) => `<span class="${w.app + w.offline >= w.required ? 'full' : w.current ? 'cur' : ''}" data-tip="第 ${w.week} 周 ${w.app + w.offline}/${w.required}">${w.app + w.offline}/${w.required}</span>`).join('')}</div></div>`;
+    ${periodOf() === 7 ? calendarChart(cells, labels) : calendarChart(cells, labels, ['推', '拉', '腿', '休'])}
+    <h3>每${unitOf()}完成情况</h3>
+    <div class="weekbar">${recent.map((w) => `<span class="${w.app + w.offline >= w.required ? 'full' : w.current ? 'cur' : ''}" data-tip="第 ${w.week} ${unitOf()} ${w.app + w.offline}/${w.required}">${w.app + w.offline}/${w.required}</span>`).join('')}</div></div>`;
   return html + bodyweightCard(today);
 }
 

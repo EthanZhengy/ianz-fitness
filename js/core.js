@@ -1,7 +1,7 @@
 'use strict';
 /* Shared state, helpers, reminders and calendar export. */
 
-const APP_VERSION = '1.28.2';
+const APP_VERSION = '1.29.0';
 const STORAGE_KEY = 'trainer-531-v2';
 const ALL_EQUIP = Object.keys(EQUIPMENT);
 const GYM_EQUIP = ALL_EQUIP.filter((e) => e !== 'ssb');
@@ -13,6 +13,7 @@ function defaultState() {
     program: '531', // active training program (see PROGRAMS); other programs' start date / schedule / tests live in programs[id]
     programs: {},
     mike: { bench1RM: 0, cg1RM: 0, variant: 'pause' },
+    ppl: { bench1RM: 0, squat1RM: 0 },
     profile: { name: '', sex: 'male', age: 25, height: 175, weight: 70, activity: 1.35, goal: 'bulk' },
     lifts: {
       press: { variant: 'ohp', oneRM: 0 }, deadlift: { variant: 'conv_dl', oneRM: 0 },
@@ -35,7 +36,7 @@ function defaultState() {
 function normalizeState(s) {
   const d = defaultState();
   return { ...d, ...s, profile: { ...d.profile, ...s.profile }, lifts: { ...d.lifts, ...s.lifts },
-    reminders: { ...d.reminders, ...s.reminders }, meta: { ...d.meta, ...s.meta }, mike: { ...d.mike, ...s.mike } };
+    reminders: { ...d.reminders, ...s.reminders }, meta: { ...d.meta, ...s.meta }, mike: { ...d.mike, ...s.mike }, ppl: { ...d.ppl, ...s.ppl } };
 }
 function loadState() {
   try {

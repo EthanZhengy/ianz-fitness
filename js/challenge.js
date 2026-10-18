@@ -21,7 +21,7 @@ function compactRows(rows) {
 
 function weekPreviewHtml(st, weekAbs, compact, withStatus) {
   const week = (weekAbs % progOf(st).weeks) + 1;
-  const start = addDays(parseKey(st.startDate), weekAbs * 7);
+  const start = addDays(parseKey(st.startDate), weekAbs * periodOf(st));
   const today = new Date();
   return orderFor(week, st).map((sid, i) => {
     const stat = withStatus ? sessionStatus(st, weekAbs, sid, today) : null;
@@ -29,18 +29,29 @@ function weekPreviewHtml(st, weekAbs, compact, withStatus) {
     const s = buildSession(st, date, sid, {});
     if (!s) return '';
     const lines = s.blocks.map((b) => {
-      if (b.type === 'main') return `<div><b>${esc(b.title.replace(/^主项 · /, ''))}</b> ${compactRows(b.rows.filter((r) => !r.label || !r.label.startsWith('热身')))}</div>`;
+      if (b.type === 'main') return `<div><b>${esc(b.title.replace(/^(核心)?主项 · /, ''))}</b> ${compactRows(b.rows.filter((r) => !r.label || !r.label.startsWith('热身')))}</div>`;
       if (compact) return '';
       return `<div class="muted">${esc(b.title)}${b.w ? ` ${fmtW(b.w)}kg` : ''} ${b.sets}×${esc(b.reps)}</div>`;
     }).join('');
     let action = '';
     if (stat && stat.status === 'offline') action = `<button class="btn tiny ghost" data-unmark="${sid}" data-week="${weekAbs}">取消标记</button>`;
     else if (stat && stat.status !== 'app' && dayDiff(start, today) >= 0) action = `<button class="btn tiny ghost" data-mark="${sid}" data-week="${weekAbs}">标记 App 外完成</button>`;
-    return `<div class="preview ${stat ? stat.status : ''}"><div class="row between"><span class="row"><span class="tag">${sessionName(sid, week)}</span>${stat ? BADGE[stat.status] : ''}</span><span class="muted">${WEEKDAYS[weekdayIdx(date)]} ${fmtDate(date)}</span></div>${lines}${action ? `<div class="row" style="justify-content:flex-end">${action}</div>` : ''}</div>`;
+    return `<div class="preview ${stat ? stat.status : ''}"><div class="row between"><span class="row"><span class="tag">${sessionName(sid, week)}</span>${stat ? BADGE[stat.status] : ''}</span><span class="muted">${periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `第 ${slotOf(st, date) + 1} 天`} ${fmtDate(date)}</span></div>${lines}${action ? `<div class="row" style="justify-content:flex-end">${action}</div>` : ''}</div>`;
   }).join('');
 }
 
 function programCardHtml(cycle) {
+  if (isPPL()) {
+    return `<div class="card"><h2>主项 1RM（第 ${cycle + 1} 轮）</h2>
+      <div class="kv"><span>杠铃卧推 1RM</span><b>${fmtW(roundTo(pplMax(state, cycle, 'bench'), 0.5))}kg</b></div>
+      <div class="kv"><span>杠铃深蹲 1RM</span><b>${fmtW(roundTo(pplMax(state, cycle, 'squat'), 0.5))}kg</b></div>
+      <table class="tm"><tr><th>循环</th><th>主项</th><th>卧推</th><th>深蹲</th></tr>
+      ${PPL_CYCLES.map((c, i) => `<tr><td>${'一二三四五六'[i]}</td><td>${c.main[0]}×${c.main[1]} @${c.main[2]}%</td><td>${fmtW(roundTo(pplMax(state, cycle, 'bench') * c.main[2] / 100, state.plateInc || 2.5))}</td><td>${fmtW(roundTo(pplMax(state, cycle, 'squat') * c.main[2] / 100, state.plateInc || 2.5))}</td></tr>`).join('')}</table>
+      <p class="muted">推 → 拉 → 腿 → 休，四天一循环。辅助动作 3 组 × 8–12 次（RPE 8），第六个循环减载。练完 6 个循环，下一轮卧推 +2.5kg、深蹲 +5kg。</p>
+      <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改 1RM</button>
+        <button class="btn small ghost" data-act="postpone">这个循环没练完，整体顺延</button>
+        <button class="btn small ghost" data-act="advance">往前调一个循环</button></div></div>`;
+  }
   if (isMike()) {
     const m = state.mike;
     const v = MIKE_VARIANTS[m.variant] || MIKE_VARIANTS.pause;
@@ -77,22 +88,22 @@ function renderChallenge() {
     <div class="card challenge-hero">
       <div class="ring big r-main"><div class="ring-fig"><svg viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="42"/>
         <circle class="val" cx="50" cy="50" r="42" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - weeksDone / P.weeks)).toFixed(1)}" transform="rotate(-90 50 50)"/></svg>
-        <div class="ring-txt"><b>${weeksDone}</b><small>/${P.weeks} 周</small></div></div></div>
+        <div class="ring-txt"><b>${weeksDone}</b><small>/${P.weeks} ${unitOf()}</small></div></div></div>
       <div class="grow"><div class="muted">第 ${cycle + 1} 轮</div><h2>${esc(P.name)}</h2>
-        <div class="muted">${pos ? `当前第 ${pos.week} 周 · ${esc(weekName(pos.week))}` : `${fmtDate(parseKey(state.startDate))} 开始`}</div>
-        <div class="muted">${isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
+        <div class="muted">${pos ? `当前第 ${pos.week} ${unitOf()} · ${esc(weekName(pos.week))}` : `${fmtDate(parseKey(state.startDate))} 开始`}</div>
+        <div class="muted">${isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
     ${programCardHtml(cycle)}`;
   for (let w = 0; w < P.weeks; w++) {
     const weekAbs = cycle * P.weeks + w;
-    const start = addDays(parseKey(state.startDate), weekAbs * 7);
+    const start = addDays(parseKey(state.startDate), weekAbs * periodOf());
     const isCur = pos && pos.weekAbs === weekAbs;
     const sts = orderFor(w + 1).slice(0, requiredFor(w + 1)).map((sid) => sessionStatus(state, weekAbs, sid, today).status);
     const nApp = sts.filter((x) => x === 'app').length, nOff = sts.filter((x) => x === 'offline').length;
     const past = pos && weekAbs <= pos.weekAbs;
     const summary = !past ? '' : nApp + nOff >= sts.length ? `<span class="badge ${nApp ? 'app' : 'offline'}">${nOff && !nApp ? '📝' : '✓'} 已完成</span>`
       : `<span class="badge${isCur ? '' : ' missed'}">${nApp + nOff}/${sts.length}</span>`;
-    html += `<details class="card week"${isCur ? ' open' : ''}><summary><b>第 ${w + 1} 周</b> ${esc(weekName(w + 1))} ${summary}
-      <span class="muted">${fmtDate(start)}起${isCur ? ' · 本周' : ''}</span></summary>${weekPreviewHtml(state, weekAbs, false, true)}</details>`;
+    html += `<details class="card week"${isCur ? ' open' : ''}><summary><b>第 ${w + 1} ${unitOf()}</b> ${esc(isPPL() ? weekName(w + 1).replace(/^循环. · /, '') : weekName(w + 1))} ${summary}
+      <span class="muted">${fmtDate(start)}起${isCur ? ` · 本${unitOf()}` : ''}</span></summary>${weekPreviewHtml(state, weekAbs, false, true)}</details>`;
   }
   $('#view-challenge').innerHTML = html;
 }
@@ -129,7 +140,7 @@ function bindChallenge() {
     if (a === 'edit-lifts') startWizard(true, null, 'lifts');
     else if (a === 'switch-program') openProgramPicker();
     else if (a === 'market') openMarket();
-    else if (a === 'postpone' && confirm('把整个计划往后推一周？（本周重新按当前这一周的内容练）')) { state.startDate = dateKey(addDays(parseKey(state.startDate), 7)); save(); render(); toast('已顺延一周'); }
-    else if (a === 'advance' && confirm('把计划往前调一周？（相当于跳到下一周）')) { state.startDate = dateKey(addDays(parseKey(state.startDate), -7)); save(); render(); }
+    else if (a === 'postpone' && confirm(`把整个计划往后推一${unitOf() === '周' ? '周' : '个循环'}？（重新按当前这一${unitOf()}的内容练）`)) { state.startDate = dateKey(addDays(parseKey(state.startDate), periodOf())); save(); render(); toast('已顺延'); }
+    else if (a === 'advance' && confirm(`把计划往前调一${unitOf() === '周' ? '周' : '个循环'}？（相当于跳到下一${unitOf()}）`)) { state.startDate = dateKey(addDays(parseKey(state.startDate), -periodOf())); save(); render(); }
   });
 }

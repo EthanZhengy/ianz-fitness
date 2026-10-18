@@ -46,17 +46,31 @@ function tmFor(st, cycle, week, lift) {
 const cur = (st) => st || (typeof state !== 'undefined' ? state : null);
 const progOf = (st) => PROGRAMS[(cur(st) && cur(st).program) || '531'] || PROGRAMS['531'];
 const isMike = (st) => progOf(st).id === 'mike';
-const programOfSession = (sid) => (String(sid).startsWith('mike') ? 'mike' : '531');
+const isPPL = (st) => progOf(st).id === 'ppl';
+const programOfSession = (sid) => (String(sid).startsWith('mike') ? 'mike' : String(sid).startsWith('ppl') ? 'ppl' : '531');
+/** Days in one program "week": 7 for weekly plans, 4 for the 推/拉/腿/休 cycle. */
+const periodOf = (st) => progOf(st).period || 7;
+/** What a program period is called: 周 or 循环. */
+const unitOf = (st) => progOf(st).unit || '周';
+/** Which day of the period `date` is: the weekday for weekly plans, else the day within the cycle. */
+function slotOf(st, date) {
+  const P = periodOf(st);
+  if (P === 7) return weekdayIdx(date);
+  return ((dayDiff(parseKey(st.startDate), date) % P) + P) % P;
+}
+const slotName = (st, date) => (periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `循环第 ${slotOf(st, date) + 1} 天`);
 const isTestWeek = (week, st) => week === progOf(st).weeks;
 function orderFor(week, st) {
+  if (isPPL(st)) return ['pplPush', 'pplPull', 'pplLegs'];
   if (isMike(st)) return isTestWeek(week, st) ? ['mikeTest'] : ['mike1', 'mike2'];
   return week === 12 ? TEST_ORDER : SESSION_ORDER;
 }
 function requiredFor(week, st) {
+  if (isPPL(st)) return 3;
   if (isMike(st)) return isTestWeek(week, st) ? 1 : 2;
   return week === 12 ? 3 : 4; // press test in week 12 is optional
 }
-const weekName = (week, st) => (isMike(st) ? MIKE_WEEKS : WEEKS)[week - 1].name;
+const weekName = (week, st) => (isPPL(st) ? PPL_CYCLES : isMike(st) ? MIKE_WEEKS : WEEKS)[week - 1].name;
 /** The state as seen by another program (its own start date, schedule and tests), for history across programs. */
 function asProgram(st, prog) {
   if ((st.program || '531') === prog) return st;
@@ -68,23 +82,24 @@ function position(st, date) {
   const start = parseKey(st.startDate);
   const diff = dayDiff(start, date);
   if (diff < 0) return null;
-  const weekAbs = Math.floor(diff / 7);
+  const P = periodOf(st);
+  const weekAbs = Math.floor(diff / P);
   const n = progOf(st).weeks;
   return {
     weekAbs, cycle: Math.floor(weekAbs / n), week: (weekAbs % n) + 1,
-    weekStart: addDays(start, weekAbs * 7), weekEnd: addDays(start, weekAbs * 7 + 6),
+    weekStart: addDays(start, weekAbs * P), weekEnd: addDays(start, weekAbs * P + P - 1),
   };
 }
 
 function scheduledFor(st, date, week) {
-  const i = st.schedule.indexOf(weekdayIdx(date));
+  const i = st.schedule.indexOf(slotOf(st, date));
   return i < 0 ? null : orderFor(week, st)[i] || null;
 }
 
 /** Sessions marked done in the program week containing `date` (optionally excluding one day). */
 function doneSessions(st, pos, excludeKey) {
   const out = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < periodOf(st); i++) {
     const k = dateKey(addDays(pos.weekStart, i));
     const l = st.logs[k];
     if (k !== excludeKey && l && l.done && l.session && l.session !== 'rest') out.push(l.session);
@@ -111,7 +126,7 @@ function recommend(st, date) {
   const required = order.slice(0, requiredFor(pos.week, st)).filter((s) => !done.includes(s));
   if (!required.length) {
     if (!isMike(st) && pos.week === 12 && !done.includes('press')) return { session: 'rest', reason: '三项测试已完成，推举测试可选' };
-    return { session: 'rest', reason: '本周训练已全部完成 🎉 好好恢复' };
+    return { session: 'rest', reason: `本${unitOf(st)}训练已全部完成 🎉 好好恢复` };
   }
   const yesterday = doneOn(st, addDays(date, -1));
   const clash = (s) => yesterday && isLower(yesterday) && isLower(s);
@@ -120,19 +135,20 @@ function recommend(st, date) {
 
   // Scheduled slots left after today (excluding today)
   let slotsAfter = 0;
-  for (let d = addDays(date, 1); d <= pos.weekEnd; d = addDays(d, 1)) if (st.schedule.includes(weekdayIdx(d))) slotsAfter++;
-  const isTrainingDay = st.schedule.includes(weekdayIdx(date));
-  if (!isTrainingDay && required.length <= slotsAfter) return { session: 'rest', reason: `今天${WEEKDAYS[weekdayIdx(date)]}，计划休息` };
+  for (let d = addDays(date, 1); d <= pos.weekEnd; d = addDays(d, 1)) if (st.schedule.includes(slotOf(st, d))) slotsAfter++;
+  const isTrainingDay = st.schedule.includes(slotOf(st, date));
+  if (!isTrainingDay && required.length <= slotsAfter) return { session: 'rest', reason: `今天${slotName(st, date)}，计划休息` };
 
   if (sched && required.includes(sched) && !clash(sched)) {
-    return { session: sched, reason: `今天${WEEKDAYS[weekdayIdx(date)]}，按计划练${label(sched)}` };
+    return { session: sched, reason: `今天${slotName(st, date)}，按计划练${label(sched)}` };
   }
   const ok = required.filter((s) => !clash(s));
   const pick = ok[0] || required[0];
   let reason;
-  if (sched && clash(sched)) reason = `昨天练了${LIFT_NAMES[yesterday]}，下肢需要恢复，今天先练${label(pick)}，${label(sched)}往后挪`;
-  else if (sched && !required.includes(sched)) reason = `${label(sched)}本周已经练过了，今天练${label(pick)}`;
-  else if (!isTrainingDay) reason = `本周还剩 ${required.length} 次训练、只剩 ${slotsAfter} 个训练日，建议今天补练${label(pick)}`;
+  const U = unitOf(st);
+  if (sched && clash(sched)) reason = `昨天练了${LIFT_NAMES[yesterday] || SESSION_LABEL[yesterday]}，下肢需要恢复，今天先练${label(pick)}，${label(sched)}往后挪`;
+  else if (sched && !required.includes(sched)) reason = `${label(sched)}本${U}已经练过了，今天练${label(pick)}`;
+  else if (!isTrainingDay) reason = `本${U}还剩 ${required.length} 次训练、只剩 ${slotsAfter} 个训练日，建议今天补练${label(pick)}`;
   else reason = `今天练${label(pick)}`;
   if (!ok.length) reason += '（昨天刚练下肢，注意充分热身，必要时选「疲劳」模式）';
   return { session: pick, reason };
@@ -151,8 +167,8 @@ function remainingPlan(st, date, todaySession) {
 
   const after = [];
   for (let d = addDays(date, 1); d <= pos.weekEnd; d = addDays(d, 1)) after.push(d);
-  const sched = after.filter((d) => st.schedule.includes(weekdayIdx(d)));
-  const extra = after.filter((d) => !st.schedule.includes(weekdayIdx(d))).reverse(); // weekend first for catch-up
+  const sched = after.filter((d) => st.schedule.includes(slotOf(st, d)));
+  const extra = after.filter((d) => !st.schedule.includes(slotOf(st, d))).reverse(); // weekend first for catch-up
   const days = sched.concat(extra).slice(0, left.length).sort((a, b) => a - b);
   const n = days.length;
 
@@ -243,6 +259,7 @@ function buildSession(st, date, sessionId, opts = {}) {
   const pos = position(st, date);
   if (!pos || !SESSIONS[sessionId]) return null;
   if (isMike(st)) return programOfSession(sessionId) === 'mike' ? buildMike(st, date, pos, sessionId, opts) : null;
+  if (isPPL(st)) return programOfSession(sessionId) === 'ppl' ? buildPPL(st, date, pos, sessionId, opts) : null;
   if (programOfSession(sessionId) !== '531') return null;
   const W = WEEKS[pos.week - 1];
   const r = opts.readiness || 'normal';
@@ -342,6 +359,48 @@ function mikeMax(st, cycle, which) {
   const bench = tested || prevBench;
   if (which === 'bench') return bench;
   return Math.round(mikeMax(st, cycle - 1, 'cg') * (prevBench ? bench / prevBench : 1) * 100) / 100;
+}
+
+/* ---------- 三分化 5+1（推 / 拉 / 腿） ---------- */
+/** Bench / squat 1RM for a round of the plan: what was entered, +2.5kg / +5kg for every finished round of 6 cycles. */
+function pplMax(st, round, lift) {
+  const base = (st.ppl && st.ppl[`${lift}1RM`]) || (st.lifts[lift] && st.lifts[lift].oneRM) || 0;
+  return base + Math.max(0, round) * (lift === 'squat' ? 5 : 2.5);
+}
+function buildPPL(st, date, pos, sid, opts = {}) {
+  const C = PPL_CYCLES[pos.week - 1];
+  const D = PPL_DAYS[sid];
+  const r = opts.readiness || 'normal';
+  const inc = st.plateInc || 2.5;
+  const notes = [D.warmup];
+  const blocks = [];
+  const lift = SESSIONS[sid].main;
+  if (lift) {
+    const [sets, reps, pct, rpe] = C.main;
+    const oneRM = pplMax(st, pos.cycle, lift);
+    const w = roundTo(oneRM * pct / 100, inc);
+    blocks.push({ key: 'main', type: 'main', title: `核心主项 · ${D.mainName}`, sub: `${pct}% 1RM · RPE ${rpe}`, lift, img: D.mainImg,
+      rows: Array.from({ length: sets }, () => ({ pct, reps, w })), note: `组间休息 ${C.deload ? '2–3' : '3–5'} 分钟`, rest: C.deload ? 120 : 180 });
+  }
+  D.acc.forEach(([name, img, cat, rest, load], i) => {
+    const db = typeof EXDB !== 'undefined' && EXDB.find((e) => e.id === img);
+    blocks.push({
+      key: `a${i}`, type: 'sets', cat, sets: 3, reps: '8-12',
+      title: `辅助 · ${name}`, ex: { id: `ppl_${img}`, name, img, cue: db && db.s ? db.s[0] : '' },
+      note: C.deload ? `减载：比平时降低 20% 重量 · RPE 6 · 组间 ${rest}` : `${load ? `${load} · ` : ''}RPE 8 · 组间 ${rest}`,
+      deload: !!C.deload, rest: /^2/.test(rest) ? 120 : 90,
+    });
+  });
+  notes.push(C.deload ? '减载循环：主项 60% 1RM，辅助动作比平时轻 20%，目的是恢复，不要加重' : '辅助动作 3 组 × 8–12 次，留 2 次余力（RPE 8）；能做满 12 次就加重');
+  let out = blocks;
+  if (r === 'tired') {
+    out = blocks.map((b) => (b.type === 'sets' ? { ...b, sets: 2 } : b));
+    notes.push('疲劳模式：辅助动作各减 1 组；主项按 RPE 下限完成');
+  } else if (r === 'short') {
+    out = blocks.filter((b, i) => b.type === 'main' || i <= (lift ? 2 : 1));
+    notes.push('时间紧：只做主项和前两个辅助动作');
+  } else if (r === 'great') notes.push('状态好：主项可以按 RPE 上限完成，但不要随意加重');
+  return { pos, week: C, sessionId: sid, kind: sid === 'pplLegs' ? 'lower' : 'upper', notes, blocks: out };
 }
 
 function buildMike(st, date, pos, sid, opts = {}) {
@@ -502,5 +561,5 @@ if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
     position, recommend, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
-    progOf, isMike, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
+    progOf, isMike, isPPL, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
 }

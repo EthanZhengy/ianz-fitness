@@ -101,17 +101,17 @@ function renderHome() {
 </div>`;
   if (dietOn()) html += dietCard(t);
   else if (homeTab === 'food') homeTab = 'today';
-  html += `<div class="utabs">${[['today', '今日训练'], ['week', '本周安排'], ...(dietOn() ? [['food', '饮食建议']] : [])].map(([k, l]) => `<button data-htab="${k}" class="${homeTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  html += `<div class="utabs">${[['today', '今日训练'], ['week', `本${unitOf()}安排`], ...(dietOn() ? [['food', '饮食建议']] : [])].map(([k, l]) => `<button data-htab="${k}" class="${homeTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   if (homeTab === 'today') html += homeFreeHtml(t) + quoteCardHtml() + homeToday(t);
   else if (homeTab === 'week') html += homeWeek(t);
   else html += homeFood(t);
   $('#view-home').innerHTML = html;
 }
 
-const DAY_EN = { press: 'PRESS DAY', deadlift: 'DEADLIFT DAY', bench: 'BENCH DAY', squat: 'SQUAT DAY', mike1: 'PUSH DAY · 1', mike2: 'PUSH DAY · 2', mikeTest: 'TEST DAY' };
+const DAY_EN = { press: 'PRESS DAY', deadlift: 'DEADLIFT DAY', bench: 'BENCH DAY', squat: 'SQUAT DAY', mike1: 'PUSH DAY · 1', mike2: 'PUSH DAY · 2', mikeTest: 'TEST DAY', pplPush: 'PUSH DAY', pplPull: 'PULL DAY', pplLegs: 'LEG DAY' };
 function homeToday(t) {
   if (!t.pos) {
-    return `<div class="card hero"><div class="muted">计划还没开始</div><h2>${fmtDate(parseKey(state.startDate))}开始第 1 周</h2>
+    return `<div class="card hero"><div class="muted">计划还没开始</div><h2>${fmtDate(parseKey(state.startDate))}开始第 1 ${unitOf()}</h2>
       <button class="btn light" data-act="start-now">现在就开始</button></div>`;
   }
   const { pos, log, rec, sid } = t;
@@ -121,14 +121,14 @@ function homeToday(t) {
   const status = (s) => sessionStatus(state, pos.weekAbs, s, t.date).status;
 
   let html = `<div class="card hero">
-    <div class="row between"><span class="tag">${esc(progOf().short)} · 第 ${pos.cycle + 1} 轮 · 第 ${pos.week}/${progOf().weeks} 周</span></div>
+    <div class="row between"><span class="tag">${esc(progOf().short)} · 第 ${pos.cycle + 1} 轮 · 第 ${pos.week}/${progOf().weeks} ${unitOf()}</span></div>
     <h2>${esc(weekName(pos.week))}</h2>
     <div class="pills">${order.map((s, i) => { const st = status(s); return `<span class="pill ${st}">${st === 'app' ? '✓ ' : st === 'offline' ? '📝 ' : ''}${sessionName(s, pos.week)}${!isMike() && pos.week === 12 && i === 3 ? '(可选)' : ''}</span>`; }).join('')}</div></div>`;
 
   const yesterday = doneOn(state, addDays(t.date, -1));
   let warn = '';
   if (log.session && log.session !== rec.session && sid !== 'rest') {
-    if (done.includes(sid)) warn = `${sessionName(sid, pos.week)}本周已经练过，这次算加练。`;
+    if (done.includes(sid)) warn = `${sessionName(sid, pos.week)}本${unitOf()}已经练过，这次算加练。`;
     else if (yesterday && LOWER[yesterday] && LOWER[sid]) warn = `昨天刚练${LIFT_NAMES[yesterday]}，连续两天练下肢恢复不足，建议选「疲劳」模式或换上肢日。`;
   }
   const notDone = order.filter((s) => !done.includes(s) && !(doneToday && s === sid));
@@ -138,8 +138,8 @@ function homeToday(t) {
     <p class="muted">⭐ 推荐：${esc(rec.reason)}</p>
     ${warn ? `<p class="warn">⚠️ ${esc(warn)}</p>` : ''}
     ${sid !== 'rest' ? `<label>今天状态</label><div class="chips">${Object.entries(READINESS).map(([k, r]) => chip(r.label, `data-ready="${k}"`, (log.readiness || 'normal') === k)).join('')}</div>` : ''}
-    ${notDone.length ? `<details class="offline-box"><summary>本周有训练是在 App 外完成的？</summary>
-      <p class="muted">点一下标记为 📝 App 外完成，会计入本周进度和数据统计（按计划重量估算）。</p>
+    ${notDone.length ? `<details class="offline-box"><summary>本${unitOf()}有训练是在 App 外完成的？</summary>
+      <p class="muted">点一下标记为 📝 App 外完成，会计入本${unitOf()}进度和数据统计（按计划重量估算）。</p>
       <div class="chips">${notDone.map((s) => chip(`📝 ${sessionName(s, pos.week)}`, `data-offline="${s}"`, false)).join('')}</div></details>` : ''}
   </div>`;
 
@@ -168,12 +168,12 @@ function homeWeek(t) {
   if (!t.pos) return '<div class="card"><p class="muted">计划还没开始。</p></div>';
   const { pos } = t;
   const rp = remainingPlan(state, t.date, t.sid);
-  let html = `<div class="card"><h2>第 ${pos.week} 周 · ${esc(weekName(pos.week))}</h2>
+  let html = `<div class="card"><h2>第 ${pos.week} ${unitOf()} · ${esc(weekName(pos.week))}</h2>
     <p class="muted">${fmtDate(pos.weekStart)} – ${fmtDate(pos.weekEnd)}</p>${weekPreviewHtml(state, pos.weekAbs, false, true)}</div>`;
   if (rp.plan.length || rp.unplaced.length) {
     html += `<div class="card"><h2>接下来</h2>
       ${rp.plan.map((p) => `<div class="row between line"><span>${WEEKDAYS[weekdayIdx(p.date)]} ${fmtDate(p.date)}</span><b>${sessionName(p.session, pos.week)}</b></div>`).join('')}
-      ${rp.unplaced.length ? `<p class="warn">本周可能练不完：${rp.unplaced.map((s) => sessionName(s, pos.week)).join('、')}。可以在「挑战」里把整个计划顺延一周。</p>` : ''}
+      ${rp.unplaced.length ? `<p class="warn">本${unitOf()}可能练不完：${rp.unplaced.map((s) => sessionName(s, pos.week)).join('、')}。可以在「挑战」里把整个计划顺延。</p>` : ''}
       <p class="muted">根据你实际练了什么自动调整，并尽量避免连续两天练下肢。</p></div>`;
   }
   return html;
@@ -211,11 +211,11 @@ function bindHome() {
       t.log.session = ds.pick;
     } else if (ds.ready) t.log.readiness = ds.ready;
     else if (ds.offline) {
-      if (!markOffline(state, t.pos.weekAbs, ds.offline, t.date)) return toast('本周已经没有空的日期可以标记了');
+      if (!markOffline(state, t.pos.weekAbs, ds.offline, t.date)) return toast(`本${unitOf()}已经没有空的日期可以标记了`);
       toast(`已标记：${sessionName(ds.offline, t.pos.week)} 📝 App 外完成`);
     } else if (ds.mark || ds.unmark) {
       const w = Number(ds.week);
-      if (ds.mark) { if (!markOffline(state, w, ds.mark, t.date)) return toast('这一周没有空的日期可以标记'); }
+      if (ds.mark) { if (!markOffline(state, w, ds.mark, t.date)) return toast(`这一${unitOf()}没有空的日期可以标记`); }
       else unmarkOffline(state, w, ds.unmark);
     } else if (ds.act === 'start') { wkMode = 'plan'; currentView = 'workout'; render(); window.scrollTo(0, 0); return; }
     else if (ds.act === 'friends') return openFriends();
@@ -282,7 +282,7 @@ function renderWorkout() {
   const doneToday = t.log.done && t.log.session === t.sid;
   const w = workoutStats(s, t.log, t.sid);
   $('#view-workout').innerHTML = `<div class="wk-head"><button class="icon-round" data-act="back" aria-label="返回">${ICONS.back}</button>
-      <div class="grow"><b>${sessionName(t.sid, t.pos.week)}</b><div class="muted">第 ${t.pos.week} 周 · ${esc(weekName(t.pos.week))} · ${READINESS[t.log.readiness || 'normal'].label}</div></div>
+      <div class="grow"><b>${sessionName(t.sid, t.pos.week)}</b><div class="muted">第 ${t.pos.week} ${unitOf()} · ${esc(weekName(t.pos.week))} · ${READINESS[t.log.readiness || 'normal'].label}</div></div>
       <div class="wk-stats"><span><b>${w.done}</b>/${w.sets} 组</span><span><b>${w.exDone}</b>/${w.ex} 动作</span><span><b>${fmtKg(w.volDone)}</b>/${fmtKg(w.vol)} 容量</span></div></div>
     ${workoutHtml(s, t.log, t.sid, doneToday)}`;
 }
@@ -293,6 +293,7 @@ const restKey = (b) => (b.ex ? b.ex.id : b.title.replace(/^.*· /, ''));
 function restFor(b) {
   const p = state.restPref && state.restPref[restKey(b)];
   if (p) return p;
+  if (b.rest) return b.rest;
   return b.type === 'main' ? (b.test ? 240 : 180) : b.key === 'sec' ? 120 : 90;
 }
 const fmtRest = (sec) => (sec % 60 ? (sec > 60 ? `${Math.floor(sec / 60)}分${sec % 60}秒` : `${sec}秒`) : `${sec / 60}分钟`);
@@ -630,7 +631,7 @@ function bindWorkout() {
       if (log.sets[k][ds.i]) {
         const bb = blk(ds.tick);
         const r = bb && blockRows(state, log, sid, bb)[ds.i];
-        if (bb && bb.ex && r && r.w) state.lastW[bb.ex.id] = { w: Number(r.w), r: Number(r.r) || 0 };
+        if (bb && bb.ex && r && r.w && !bb.deload) state.lastW[bb.ex.id] = { w: Number(r.w), r: Number(r.r) || 0 };
         startRest(Number(ds.rest) || 90);
         // last set of this exercise: open the next unfinished one
         if (bb && blockProgress(log, sid, bb).full) wkOpen = undefined;

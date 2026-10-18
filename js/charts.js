@@ -95,10 +95,10 @@ function barChart({ bars, height = 180, unit = '' }) {
 }
 
 /** Calendar heatmap: weeks as columns (oldest left), Mon–Sun as rows. cells[w][d] = { cls, tip } */
-function calendarChart(cells, weekLabels) {
+function calendarChart(cells, weekLabels, rowLabels = ['一', '', '三', '', '五', '', '日']) {
   const cs = 16, gap = 3, padL = 26, padT = 4;
-  const W = padL + cells.length * (cs + gap), H = padT + 7 * (cs + gap) + 18;
-  let g = ['一', '', '三', '', '五', '', '日'].map((l, i) => l && `<text class="viz-axis" x="${padL - 6}" y="${padT + i * (cs + gap) + 12}" text-anchor="end">${l}</text>`).join('');
+  const W = padL + cells.length * (cs + gap), H = padT + rowLabels.length * (cs + gap) + 18;
+  let g = rowLabels.map((l, i) => l && `<text class="viz-axis" x="${padL - 6}" y="${padT + i * (cs + gap) + 12}" text-anchor="end">${l}</text>`).join('');
   cells.forEach((col, w) => {
     col.forEach((c, d) => {
       const x = padL + w * (cs + gap), y = padT + d * (cs + gap);

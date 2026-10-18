@@ -41,6 +41,7 @@ function sessionRef(st, date, sid) {
   const pos = position(st, date);
   if (!pos || !SESSIONS[sid]) return 0;
   if (programOfSession(sid) === 'mike') return mikeMax(st, pos.cycle, sid === 'mike2' ? 'cg' : 'bench');
+  if (programOfSession(sid) === 'ppl') return pplMax(st, pos.cycle, SESSIONS[sid].main || 'bench');
   return tmFor(st, pos.cycle, pos.week, SESSIONS[sid].main) / 0.9;
 }
 
@@ -72,7 +73,8 @@ function plannedRows(st, b) {
     return b.rows.map((r) => ({ w: r.w, r: r.reps, t: r.label === '热身' ? 'warm' : 'work', plus: !!r.plus, pct: r.pct, label: r.label, single: !!r.extra }));
   }
   const last = b.ex && st.lastW && st.lastW[b.ex.id];
-  const w = b.w != null ? b.w : last ? last.w : null;
+  // deload blocks start 20% lighter than the last weight used
+  const w = b.w != null ? b.w : last ? (b.deload ? roundTo(last.w * 0.8, st.plateInc || 2.5) : last.w) : null;
   const r = firstInt(b.reps) || (last ? last.r : 10);
   return Array.from({ length: b.sets }, () => ({ w, r, t: 'work' }));
 }
@@ -158,10 +160,12 @@ function summarizeSession(st, date, sid, log) {
   if (!s) return null;
   const pos = s.pos;
   const main = s.blocks.find((b) => b.type === 'main') || s.blocks[0];
-  const mike = programOfSession(sid) === 'mike';
+  const prog = programOfSession(sid);
+  const mike = prog === 'mike', ppl = prog === 'ppl';
   const secondary = SESSIONS[sid].secondary;
-  const out = { lift: main.lift, variant: mike ? main.title.replace(/^.*· /, '') : variantOf(st, main.lift).name, volume: 0, sets: 0, e1rm: null, top: null, test: null,
-    exIds: (mike ? ['bb_bench'] : [variantOf(st, main.lift).id]).concat(s.test || !secondary ? [] : [variantOf(st, secondary).id], s.blocks.filter((b) => b.ex).map((b) => b.ex.id)) };
+  const mainId = mike ? ['bb_bench'] : ppl ? (main.lift ? [main.lift === 'squat' ? 'bb_squat' : 'bb_bench'] : []) : [variantOf(st, main.lift).id];
+  const out = { lift: main.lift, variant: prog === '531' ? variantOf(st, main.lift).name : main.title.replace(/^.*· /, ''), volume: 0, sets: 0, e1rm: null, top: null, test: null,
+    exIds: mainId.concat(s.test || !secondary ? [] : [variantOf(st, secondary).id], s.blocks.filter((b) => b.ex).map((b) => b.ex.id)) };
   if (s.test) {
     const t = st.tests[pos.cycle] && st.tests[pos.cycle][main.lift];
     if (t) { out.test = t; out.e1rm = { value: t, w: t, reps: 1, src: 'test' }; out.top = { w: t, reps: 1 }; }
@@ -181,6 +185,11 @@ function summarizeSession(st, date, sid, log) {
       out.volume += w * reps;
       if (b.type !== 'main') return;
       if (!out.top || w > out.top.w) out.top = { w, reps };
+      // 推拉腿 has no "+" sets: estimate 1RM from the heaviest completed main-lift set
+      if (ppl && w && reps) {
+        const v = Math.round(epley(w, reps) * 2) / 2;
+        if (!out.e1rm || v > out.e1rm.value) out.e1rm = { value: v, w, reps, src: 'amrap' };
+      }
       const a = amrap[`${sid}:${b.key}:${i}`];
       if (r.plus && a) {
         const v = Math.round(epley(w, a) * 2) / 2;
@@ -209,15 +218,16 @@ function trainingHistory(st) {
 
 /** Completion status of one session in a program week: app / offline / missed / upcoming. */
 function sessionStatus(st, weekAbs, sid, today) {
-  const start = addDays(parseKey(st.startDate), weekAbs * 7);
-  for (let i = 0; i < 7; i++) {
+  const P = periodOf(st);
+  const start = addDays(parseKey(st.startDate), weekAbs * P);
+  for (let i = 0; i < P; i++) {
     const k = dateKey(addDays(start, i));
     const l = st.logs[k];
     if (l && l.done && l.session === sid) return { status: l.offline ? 'offline' : 'app', date: addDays(start, i) };
   }
   const idx = orderFor((weekAbs % progOf(st).weeks) + 1, st).indexOf(sid);
   const date = addDays(start, st.schedule[idx] ?? idx);
-  const weekEnd = addDays(start, 6);
+  const weekEnd = addDays(start, P - 1);
   return { status: dayDiff(weekEnd, today) > 0 ? 'missed' : 'upcoming', date };
 }
 
@@ -226,10 +236,11 @@ function sessionStatus(st, weekAbs, sid, today) {
  * otherwise another free day of that week, never a future day.
  */
 function markOffline(st, weekAbs, sid, today) {
-  const start = addDays(parseKey(st.startDate), weekAbs * 7);
+  const P = periodOf(st);
+  const start = addDays(parseKey(st.startDate), weekAbs * P);
   const idx = orderFor((weekAbs % progOf(st).weeks) + 1, st).indexOf(sid);
   const pref = addDays(start, st.schedule[idx] ?? idx);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
+  const days = Array.from({ length: P }, (_, i) => addDays(start, i))
     .filter((d) => dayDiff(d, today) >= 0)
     .sort((a, b) => Math.abs(dayDiff(pref, a)) - Math.abs(dayDiff(pref, b)));
   const free = days.find((d) => { const l = st.logs[dateKey(d)]; return !l || !l.done; });
@@ -239,8 +250,9 @@ function markOffline(st, weekAbs, sid, today) {
   return true;
 }
 function unmarkOffline(st, weekAbs, sid) {
-  const start = addDays(parseKey(st.startDate), weekAbs * 7);
-  for (let i = 0; i < 7; i++) {
+  const P = periodOf(st);
+  const start = addDays(parseKey(st.startDate), weekAbs * P);
+  for (let i = 0; i < P; i++) {
     const k = dateKey(addDays(start, i));
     const l = st.logs[k];
     if (l && l.offline && l.session === sid) { l.done = false; l.offline = false; l.session = undefined; }
@@ -256,7 +268,7 @@ function weekly(st, today, hist = trainingHistory(st)) {
   const prog = progOf(st).id;
   for (let w = 0; w <= cur.weekAbs; w++) {
     const week = (w % n) + 1;
-    const start = addDays(parseKey(st.startDate), w * 7);
+    const start = addDays(parseKey(st.startDate), w * periodOf(st));
     const hs = hist.filter((h) => h.program === prog && h.pos.weekAbs === w);
     weeks.push({
       weekAbs: w, week, cycle: Math.floor(w / n), start,
@@ -289,9 +301,10 @@ function tmSeries(st, lift, today) {
   const n = progOf(st).weeks;
   const last = cur ? (cur.cycle + 1) * n - 1 : n - 1;
   return Array.from({ length: last + 1 }, (_, w) => ({
-    weekAbs: w, date: addDays(parseKey(st.startDate), w * 7),
+    weekAbs: w, date: addDays(parseKey(st.startDate), w * periodOf(st)),
     // 5/3/1 plots its training max; the Mike plan works straight off the bench 1RM
-    tm: isMike(st) ? (lift === 'bench' ? roundTo(mikeMax(st, Math.floor(w / n), 'bench'), 0.5) : null)
+    tm: isPPL(st) ? (['bench', 'squat'].includes(lift) ? roundTo(pplMax(st, Math.floor(w / n), lift), 0.5) : null)
+      : isMike(st) ? (lift === 'bench' ? roundTo(mikeMax(st, Math.floor(w / n), 'bench'), 0.5) : null)
       : roundTo(tmFor(st, Math.floor(w / n), (w % n) + 1, lift), 0.5),
   })).filter((p) => p.tm !== null);
 }
@@ -313,7 +326,8 @@ function personalRecords(st, hist) {
     const pts = e1rmSeries(hist, l);
     const best = pts.reduce((a, p) => (!a || p.value > a.value ? p : a), null);
     const heaviest = hist.filter((h) => h.lift === l && h.top && !h.offline).reduce((a, h) => (!a || h.top.w > a.w ? { ...h.top, date: h.date } : a), null);
-    out[l] = { best, heaviest, start: st.lifts[l].oneRM };
+    const start = isPPL(st) && st.ppl && st.ppl[`${l}1RM`] ? st.ppl[`${l}1RM`] : isMike(st) && l === 'bench' && st.mike && st.mike.bench1RM ? st.mike.bench1RM : st.lifts[l].oneRM;
+    out[l] = { best, heaviest, start };
   });
   return out;
 }
