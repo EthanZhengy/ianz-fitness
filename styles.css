@@ -1032,3 +1032,11 @@ body:has(.free-bar) .rest { z-index: 25; bottom: calc(84px + env(safe-area-inset
 .pim-warn { border-left: 3px solid var(--warn); }
 .pim-warn p { margin: 6px 0 0; }
 .pim-sum .kv b { text-align: right; }
+
+/* 头像裁剪 */
+.pf-photo-btns { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.crop-box { position: relative; margin: 12px auto 16px; overflow: hidden; border-radius: 20px; background: #000; touch-action: none; cursor: grab; user-select: none; }
+.crop-box img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; pointer-events: none; }
+.crop-mask { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgba(0, 0, 0, .55); border: 2px solid rgba(255, 255, 255, .85); pointer-events: none; }
+.crop-zoom { display: flex; align-items: center; gap: 10px; margin: 0 8px 16px; color: var(--muted); }
+.crop-zoom input { flex: 1; }

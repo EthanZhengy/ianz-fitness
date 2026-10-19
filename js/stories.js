@@ -38,7 +38,8 @@ function openProfileEdit() {
   const d = profDraft;
   const photo = d.url || me.avatar_url;
   openSheet('编辑资料', `<div class="pf-photo">${photo ? `<img src="${esc(photo)}" alt="">` : avatarHtml(uid, d.name, 'lg')}
-      <label class="btn small ghost">${photo ? '更换头像' : '上传头像'}<input type="file" id="pfAvatar" accept="image/*" hidden></label></div>
+      <div class="pf-photo-btns"><label class="btn small ghost">${photo ? '更换头像' : '上传头像'}<input type="file" id="pfAvatar" accept="image/*" hidden></label>
+      ${d.src ? '<button class="btn small ghost" data-stact="recrop">重新裁剪</button>' : ''}</div></div>
     <label>昵称</label><input id="pfName" maxlength="20" value="${esc(d.name)}">
     <label>个性签名</label><input id="pfBio" maxlength="80" placeholder="如：卧推 120 是今年的目标" value="${esc(d.bio)}">
     <label>当前状态</label>
@@ -74,12 +75,88 @@ async function saveProfile() {
     if (social.me) social.me.name = patch.name;
     PEOPLE[uid] = { ...(PEOPLE[uid] || {}), user_id: uid, ...patch, avatar_url: patch.avatar_url || (PEOPLE[uid] || {}).avatar_url || null };
     if (d.url) URL.revokeObjectURL(d.url);
+    if (d.src) URL.revokeObjectURL(d.src);
     profDraft = null;
     closeSheet(); render(); toast('资料已更新');
   } catch (err) {
     btn.disabled = false; btn.textContent = '保存';
     toast(isMissingTable(err) || /column|avatar|bio|status/i.test(err.message || '') ? '请先在 Supabase 运行 supabase/stories.sql' : `保存失败：${err.message || err}`);
   }
+}
+
+/* ---------- 头像裁剪: drag to move, slider / pinch / wheel to zoom; the square inside the circle becomes the avatar ---------- */
+let crop = null; // { src, img, V, s0, z, x, y }
+function openAvatarCrop(src) {
+  const img = new Image();
+  img.onload = () => {
+    const V = Math.min(300, window.innerWidth - 64);
+    const s0 = V / Math.min(img.naturalWidth, img.naturalHeight);
+    crop = { src, img, V, s0, z: 1, x: (V - img.naturalWidth * s0) / 2, y: (V - img.naturalHeight * s0) / 2 };
+    openSheet('裁剪头像', `<p class="muted small center">拖动照片调整位置，双指或滑块缩放</p>
+      <div class="crop-box" id="cropBox" style="width:${V}px;height:${V}px"><img id="cropImg" src="${src}" alt="" draggable="false" style="width:${img.naturalWidth}px;height:${img.naturalHeight}px"><div class="crop-mask"></div></div>
+      <div class="crop-zoom"><span>－</span><input type="range" id="cropZoom" min="1" max="4" step="0.01" value="1" aria-label="缩放"><span>＋</span></div>
+      <div class="row"><button class="btn ghost grow" data-crop="cancel">取消</button><button class="btn grow" data-crop="ok">使用这个头像</button></div>`,
+      { type: 'avcrop' });
+    drawCrop();
+    bindCropBox();
+  };
+  img.onerror = () => toast('无法读取这张图片');
+  img.src = src;
+}
+function clampCrop() {
+  const c = crop, s = c.s0 * c.z;
+  c.x = Math.min(0, Math.max(c.V - c.img.naturalWidth * s, c.x));
+  c.y = Math.min(0, Math.max(c.V - c.img.naturalHeight * s, c.y));
+}
+function drawCrop() {
+  clampCrop();
+  const el = $('#cropImg');
+  if (el) el.style.transform = `translate(${crop.x}px, ${crop.y}px) scale(${crop.s0 * crop.z})`;
+  const r = $('#cropZoom');
+  if (r && Number(r.value) !== crop.z) r.value = crop.z;
+}
+/** Zoom to z keeping the point at (px, py) in the box still. */
+function zoomCrop(z, px = crop.V / 2, py = crop.V / 2) {
+  const s = crop.s0 * crop.z, z2 = Math.min(4, Math.max(1, z)), s2 = crop.s0 * z2;
+  crop.x = px - ((px - crop.x) / s) * s2;
+  crop.y = py - ((py - crop.y) / s) * s2;
+  crop.z = z2;
+  drawCrop();
+}
+function bindCropBox() {
+  const box = $('#cropBox');
+  const pts = new Map();
+  let pinch = null;
+  const local = (e) => { const r = box.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  box.addEventListener('pointerdown', (e) => {
+    box.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, local(e));
+    if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: crop.z }; }
+  });
+  box.addEventListener('pointermove', (e) => {
+    if (!pts.has(e.pointerId)) return;
+    const prev = pts.get(e.pointerId), cur = local(e);
+    pts.set(e.pointerId, cur);
+    if (pts.size === 2 && pinch) {
+      const [a, b] = [...pts.values()];
+      zoomCrop(pinch.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+    } else if (pts.size === 1) { crop.x += cur[0] - prev[0]; crop.y += cur[1] - prev[1]; drawCrop(); }
+  });
+  const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
+  box.addEventListener('pointerup', up);
+  box.addEventListener('pointercancel', up);
+  box.addEventListener('wheel', (e) => { e.preventDefault(); const [px, py] = local(e); zoomCrop(crop.z * (e.deltaY < 0 ? 1.1 : 0.9), px, py); }, { passive: false });
+  $('#cropZoom').addEventListener('input', (e) => zoomCrop(Number(e.target.value)));
+}
+/** The visible square as a 512×512 JPEG. */
+function cropToBlob() {
+  const c = crop, s = c.s0 * c.z;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 512;
+  const g = cv.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(c.img, -c.x / s, -c.y / s, c.V / s, c.V / s, 0, 0, 512, 512);
+  return new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error('裁剪失败'))), 'image/jpeg', 0.9));
 }
 
 /** After the name changes in 我的 → 修改信息, update the public profile too. */
@@ -298,15 +375,15 @@ function bindStories() {
     if (!b) return;
     if (b.dataset.st === 'add') return $('#stFile').click();
     if (b.dataset.st) return openStories(b.dataset.st);
-    if (b.dataset.stact === 'edit-profile') { profDraft = null; return openProfileEdit(); }
+    if (b.dataset.stact === 'edit-profile') { if (profDraft && profDraft.src) URL.revokeObjectURL(profDraft.src); profDraft = null; return openProfileEdit(); }
   });
   document.addEventListener('change', (e) => {
     if (e.target.id === 'stFile' && e.target.files[0]) openStoryDraft(e.target.files[0]);
     if (e.target.id === 'pfAvatar' && e.target.files[0] && profDraft) {
       readProf();
-      if (profDraft.url) URL.revokeObjectURL(profDraft.url);
-      profDraft.file = e.target.files[0]; profDraft.url = URL.createObjectURL(profDraft.file);
-      refreshSheet();
+      if (profDraft.src) URL.revokeObjectURL(profDraft.src);
+      profDraft.src = URL.createObjectURL(e.target.files[0]); // the original photo, kept for 重新裁剪
+      openAvatarCrop(profDraft.src);
     }
   });
   $('#sheet').addEventListener('click', (e) => {
@@ -314,6 +391,15 @@ function bindStories() {
     const b = e.target.closest('button');
     if (!b) return;
     const ds = b.dataset;
+    if (sheetCtx.type === 'stprof' && ds.stact === 'recrop' && profDraft && profDraft.src) { readProf(); return openAvatarCrop(profDraft.src); }
+    if (sheetCtx.type === 'avcrop' && ds.crop) {
+      if (ds.crop === 'cancel') { crop = null; return openProfileEdit(); }
+      return cropToBlob().then((blob) => {
+        if (profDraft.url) URL.revokeObjectURL(profDraft.url);
+        profDraft.file = blob; profDraft.url = URL.createObjectURL(blob);
+        crop = null; openProfileEdit();
+      }).catch((err) => toast(err.message));
+    }
     if (sheetCtx.type === 'report' && ds.rp) return submitReport(ds.rp);
     if (sheetCtx.type === 'cmstory' && ds.sadel) {
       cloud.client.from('story_comments').delete().eq('id', ds.sadel).then(() => {
