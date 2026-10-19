@@ -143,7 +143,7 @@ function statsTabHtml() {
   </div>`;
 
   // Strength curve (推拉腿 only has bench and squat main lifts)
-  const chartLifts = isPPL() ? ['bench', 'squat'] : isIan() ? ['bench', 'squat', 'deadlift'] : LIFTS;
+  const chartLifts = isCustom() ? (planLifts(progOf().def).length ? planLifts(progOf().def) : LIFTS) : isPPL() ? ['bench', 'squat'] : isIan() ? ['bench', 'squat', 'deadlift'] : LIFTS;
   if (!chartLifts.includes(statsLift)) statsLift = chartLifts[0];
   const tm = tmSeries(state, statsLift, today);
   const e1 = e1rmSeries(hist, statsLift);
@@ -179,7 +179,7 @@ function statsTabHtml() {
   html += `<div class="card"><h2>每${unitOf()}训练量 <span class="muted">（吨）</span></h2>
     <div class="legend"><span><i class="lg s1"></i>App 记录</span><span><i class="lg s1soft"></i>App 外（按计划估算）</span></div>
     ${barChart({ bars })}
-    <p class="muted">${isPPL() ? '减载循环（第 6 循环）' : isMike() ? '减量周' : '减载周（第 4、8 周）'}训练量下降是正常的。</p></div>`;
+    <p class="muted">${isCustom() ? '减载周' : isPPL() ? '减载循环（第 6 循环）' : isMike() ? '减量周' : '减载周（第 4、8 周）'}训练量下降是正常的。</p></div>`;
 
   // Calendar
   // weekly plans: one column per program week; cycle plans: plain calendar weeks (Mon–Sun)

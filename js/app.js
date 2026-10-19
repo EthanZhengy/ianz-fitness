@@ -6,6 +6,7 @@ const TABS = [['home', '训练', 'train'], ['challenge', '挑战', 'challenge'],
 const RENDER = { home: renderHome, challenge: renderChallenge, library: renderLibrary, history: renderHistory, me: renderMe, workout: renderWorkout, friends: renderFriends, market: renderMarket };
 
 function render() {
+  registerCustomPrograms(state);
   applyTheme();
   if (!state.onboarded && !wiz) { startWizard(false); return; }
   const mode = wiz ? 'wizard' : currentView;
@@ -38,7 +39,7 @@ document.addEventListener('click', (e) => {
   wkMode = 'plan'; currentView = 'home'; homeTab = 'today'; render(); window.scrollTo(0, 0);
 });
 
-bindCloud(); bindWizard(); bindHome(); bindSheet(); bindWorkout(); bindFree(); bindChallenge(); bindLibrary(); bindHistory(); bindNutrition(); bindSettings(); bindMe(); bindFriends(); bindCommunity(); bindMarket(); bindStories(); bindQuotes(); bindPush(); bindPhotos(); bindExHistory();
+bindCloud(); bindWizard(); bindHome(); bindSheet(); bindWorkout(); bindFree(); bindChallenge(); bindLibrary(); bindHistory(); bindNutrition(); bindSettings(); bindMe(); bindFriends(); bindCommunity(); bindMarket(); bindStories(); bindQuotes(); bindPush(); bindPhotos(); bindExHistory(); bindPlanImport();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {

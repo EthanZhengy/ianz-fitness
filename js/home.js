@@ -664,7 +664,7 @@ function bindWorkout() {
       log.sets[k] = log.sets[k] || [];
       log.sets[k][ds.i] = !log.sets[k][ds.i];
       const bb = blk(ds.tick);
-      if (bb && bb.ianSlot && !bb.deload) recordAcc(t.key, log, sid, bb);
+      if (bb && (bb.ianSlot || bb.dp) && !bb.deload) recordAcc(t.key, log, sid, bb);
       if (log.sets[k][ds.i]) {
         const r = bb && blockRows(state, log, sid, bb)[ds.i];
         if (bb && bb.ex && r && r.w && !bb.deload) state.lastW[bb.ex.id] = { w: Number(r.w), r: Number(r.r) || 0 };
@@ -734,7 +734,7 @@ function bindWorkout() {
         return;
       }
       editRows(t.log, sid, b)[ds.i][ds.sw ? 'w' : 'r'] = v;
-      if (b.ianSlot && !b.deload) recordAcc(t.key, t.log, sid, b);
+      if ((b.ianSlot || b.dp) && !b.deload) recordAcc(t.key, t.log, sid, b);
       snapshot(t.date, t.log); save();
       if (sid === 'free') updateFreeStats();
     } else if (el.dataset.test) {

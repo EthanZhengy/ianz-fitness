@@ -48,7 +48,7 @@ const progOf = (st) => PROGRAMS[(cur(st) && cur(st).program) || '531'] || PROGRA
 const isMike = (st) => progOf(st).id === 'mike';
 const isPPL = (st) => progOf(st).id === 'ppl';
 const isIan = (st) => progOf(st).id === 'ian';
-const programOfSession = (sid) => (String(sid).startsWith('mike') ? 'mike' : String(sid).startsWith('ppl') ? 'ppl' : String(sid).startsWith('ian') ? 'ian' : '531');
+const programOfSession = (sid) => (/^cp_[a-z0-9]+_d\d+$/.test(String(sid)) ? String(sid).replace(/_d\d+$/, '') : String(sid).startsWith('mike') ? 'mike' : String(sid).startsWith('ppl') ? 'ppl' : String(sid).startsWith('ian') ? 'ian' : '531');
 /** Days in one program "week": 7 for weekly plans, 4 for the 推/拉/腿/休 cycle. */
 const periodOf = (st) => progOf(st).period || 7;
 /** What a program period is called: 周 or 循环. */
@@ -149,18 +149,20 @@ function setCurrentWeek(st, week, today = new Date()) {
 const slotName = (st, date) => (periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `循环第 ${slotOf(st, date) + 1} 天`);
 const isTestWeek = (week, st) => ['531', 'mike', 'ian'].includes(progOf(st).id) && week === progOf(st).weeks;
 function orderFor(week, st) {
+  if (isCustom(st)) return progOf(st).def.days.map((_, i) => `${progOf(st).id}_d${i}`);
   if (isPPL(st)) return ['pplPush', 'pplPull', 'pplLegs'];
   if (isIan(st)) return ['ianChest', 'ianLegs', 'ianShoulder', 'ianBack'];
   if (isMike(st)) return isTestWeek(week, st) ? ['mikeTest'] : ['mike1', 'mike2'];
   return week === 12 ? TEST_ORDER : SESSION_ORDER;
 }
 function requiredFor(week, st) {
+  if (isCustom(st)) return progOf(st).def.days.length;
   if (isPPL(st)) return 3;
   if (isIan(st)) return 4;
   if (isMike(st)) return isTestWeek(week, st) ? 1 : 2;
   return week === 12 ? 3 : 4; // press test in week 12 is optional
 }
-const weekName = (week, st) => (isPPL(st) ? PPL_CYCLES : isMike(st) ? MIKE_WEEKS : WEEKS)[week - 1].name;
+const weekName = (week, st) => (isCustom(st) ? progOf(st).def.weekInfo : isPPL(st) ? PPL_CYCLES : isMike(st) ? MIKE_WEEKS : WEEKS)[week - 1].name;
 /** The state as seen by another program (its own start date, schedule and tests), for history across programs. */
 function asProgram(st, prog) {
   if ((st.program || '531') === prog) return st;
@@ -364,6 +366,7 @@ function buildSession(st, date, sessionId, opts = {}) {
   if (isMike(st)) return programOfSession(sessionId) === 'mike' ? buildMike(st, date, pos, sessionId, opts) : null;
   if (isPPL(st)) return programOfSession(sessionId) === 'ppl' ? buildPPL(st, date, pos, sessionId, opts) : null;
   if (isIan(st)) return programOfSession(sessionId) === 'ian' ? buildIan(st, date, pos, sessionId, opts) : null;
+  if (isCustom(st)) return programOfSession(sessionId) === progOf(st).id ? buildCustom(st, date, pos, sessionId, opts) : null;
   if (programOfSession(sessionId) !== '531') return null;
   const W = WEEKS[pos.week - 1];
   const r = opts.readiness || 'normal';
@@ -692,6 +695,149 @@ function buildMike(st, date, pos, sid, opts = {}) {
   return { pos, week: W, sessionId: sid, blocks: out, notes, kind: 'upper' };
 }
 
+/* ---------- 导入的计划（AI 识别 / 计划文件） ----------
+ * state.customPrograms[id] = def (see normalizePlanDef). Each one becomes a program like the built-in ones:
+ * PROGRAMS[id], one session per day `${id}_d${i}`, weekly (fixed weekdays) or rotation (in order, 自动顺延).
+ * Loads: pct = % of the lift's 1RM (+2.5kg upper / +5kg lower each finished round) · double = double progression
+ * (accPlan) · kg = fixed weight · free = the weight used last time.
+ */
+const CP_CATS = ['chest', 'back', 'leg', 'shoulder', 'bi', 'tri', 'glute', 'calf', 'grip', 'core', 'custom'];
+const CP_LOADS = ['pct', 'double', 'kg', 'free'];
+const CP_EQUIP = ['bb', 'smith', 'db', 'cable', 'machine', 'press', 'bw'];
+const CP_INC = { bench: 2.5, press: 2.5, squat: 5, deadlift: 5 };
+const isCustomProg = (id) => /^cp_[a-z0-9]+$/.test(String(id));
+const isCustom = (st) => !!progOf(st).custom;
+const cpDayIdx = (sid) => Number(String(sid).slice(String(sid).lastIndexOf('_d') + 2));
+
+/** Clean up a plan from the AI or a shared file: clamp numbers, drop unknown values, fill the gaps. Throws if nothing usable. */
+function normalizePlanDef(raw, id) {
+  const str = (v, n = 80) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+  const num = (v, lo, hi, d = 0) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
+  const int = (v, lo, hi, d = 0) => Math.round(num(v, lo, hi, d));
+  const one = (v, list, d) => (list.includes(v) ? v : d);
+  if (!raw || typeof raw !== 'object') throw new Error('不是有效的训练计划');
+  const weeks = int(raw.weeks, 1, 24, 4);
+  const mode = raw.mode === 'rotation' ? 'rotation' : 'weekly';
+  const days = (Array.isArray(raw.days) ? raw.days : []).slice(0, mode === 'weekly' ? 7 : 10).map((d, di) => ({
+    name: str(d && d.name, 16) || `训练日 ${di + 1}`,
+    focus: one(d && d.focus, ['upper', 'lower', 'full'], 'full'),
+    note: str(d && d.note, 300),
+    ex: (Array.isArray(d && d.exercises) ? d.exercises : Array.isArray(d && d.ex) ? d.ex : []).slice(0, 15).map((e) => {
+      const lift = one(e.lift, LIFTS, '');
+      let load = one(e.load, CP_LOADS, 'free');
+      if (load === 'pct' && !lift) load = 'free';
+      const plan = (Array.isArray(e.plan) ? e.plan : []).slice(0, 24).map((p) => ({
+        weeks: [...new Set((Array.isArray(p.weeks) ? p.weeks : []).map((w) => int(w, 1, weeks, 0)).filter(Boolean))].sort((a, b) => a - b),
+        sets: (Array.isArray(p.sets) ? p.sets : []).slice(0, 12).map((s) => {
+          const reps = int(s.reps, 0, 100, 0);
+          return { reps, repsMax: Math.max(reps, int(s.repsMax, 0, 100, 0)), pct: num(s.pct, 0, 110, 0), kg: num(s.kg, 0, 500, 0), rpe: num(s.rpe, 0, 10, 0), amrap: !!s.amrap, warm: !!s.warm };
+        }),
+      })).filter((p) => p.sets.length);
+      return {
+        name: str(e.name, 40), img: /^[A-Za-z0-9_-]{1,80}$/.test(e.img || '') ? e.img : '',
+        cat: one(e.cat, CP_CATS, ''), lift, load, equip: one(e.equip, CP_EQUIP, 'bb'),
+        rest: int(e.rest, 0, 600, load === 'pct' ? 180 : 90), note: str(e.note, 200), plan,
+      };
+    }).filter((e) => e.name && e.plan.length),
+  })).filter((d) => d.ex.length);
+  if (!days.length) throw new Error('没有识别到训练日和动作');
+  const wi = Array.isArray(raw.weekInfo) ? raw.weekInfo : [];
+  return {
+    id: id || raw.id, v: 1,
+    name: str(raw.name, 30) || '导入的训练计划', desc: str(raw.desc, 300), weeks, mode,
+    restAfter: mode === 'rotation' ? int(raw.restAfter, 0, 3, 1) : 0,
+    weekInfo: Array.from({ length: weeks }, (_, i) => ({ name: str(wi[i] && wi[i].name, 20) || `第 ${i + 1} 周`, deload: !!(wi[i] && wi[i].deload), note: str(wi[i] && wi[i].note, 200) })),
+    days, warnings: (Array.isArray(raw.warnings) ? raw.warnings : []).slice(0, 10).map((w) => str(w, 200)).filter(Boolean),
+    source: str(raw.source, 20), createdAt: Number(raw.createdAt) || Date.now(), hidden: !!raw.hidden,
+  };
+}
+/** Lifts that need a 1RM (percentage-based exercises). */
+const planLifts = (def) => LIFTS.filter((l) => def.days.some((d) => d.ex.some((e) => e.load === 'pct' && e.lift === l)));
+/** Default training weekdays for a weekly plan with n days. */
+const CP_DEFAULT_DAYS = { 1: [0], 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5], 7: [0, 1, 2, 3, 4, 5, 6] };
+
+/** Put the user's imported plans into PROGRAMS / SESSIONS / SESSION_LABEL (call after loading or changing state). */
+function registerCustomPrograms(st) {
+  Object.keys(PROGRAMS).filter(isCustomProg).forEach((id) => delete PROGRAMS[id]);
+  Object.values((st && st.customPrograms) || {}).forEach((def) => {
+    if (!def || !isCustomProg(def.id) || !Array.isArray(def.days) || !def.days.length) return;
+    const rot = def.mode === 'rotation';
+    PROGRAMS[def.id] = {
+      id: def.id, name: def.name, short: def.name.slice(0, 8), weeks: def.weeks, days: def.days.length, custom: true, def, hidden: !!def.hidden,
+      desc: def.desc || def.days.map((d) => d.name).join(' · '),
+      defaultSchedule: rot ? def.days.map((_, i) => i) : CP_DEFAULT_DAYS[def.days.length],
+      ...(rot ? { period: def.days.length + def.restAfter, unit: '周', flex: true, restAfter: def.restAfter } : {}),
+    };
+    def.days.forEach((d, i) => {
+      const sid = `${def.id}_d${i}`;
+      const main = d.ex.find((e) => e.load === 'pct' && e.lift);
+      SESSIONS[sid] = { main: main ? main.lift : undefined, program: def.id };
+      SESSION_LABEL[sid] = d.name;
+      LOWER[sid] = d.focus === 'lower';
+    });
+  });
+}
+function cpMax(st, round, lift) {
+  return ((st.lifts[lift] && st.lifts[lift].oneRM) || 0) + Math.max(0, round) * (CP_INC[lift] || 2.5);
+}
+/** The sets an exercise does in `week`: the plan entry listing that week, else the entry without weeks (every week). */
+function cpSets(ex, week) {
+  const hit = ex.plan.find((p) => p.weeks.includes(week)) || ex.plan.find((p) => !p.weeks.length);
+  return hit ? hit.sets : [];
+}
+const cpExId = (ex, lo, hi) => `cp_${hash(ex.name)}${ex.load === 'double' ? `_${lo}-${hi}` : ''}`;
+function buildCustom(st, date, pos, sid, opts = {}) {
+  const P = progOf(st);
+  const D = P.def.days[cpDayIdx(sid)];
+  if (!D) return null;
+  const W = P.def.weekInfo[pos.week - 1] || { name: `第 ${pos.week} 周` };
+  const r = opts.readiness || 'normal';
+  const inc = st.plateInc || 2.5;
+  const notes = [D.note, W.note].filter(Boolean);
+  const blocks = [];
+  D.ex.forEach((ex, i) => {
+    const sets = cpSets(ex, pos.week);
+    if (!sets.length) return; // not trained this week
+    const db = typeof EXDB !== 'undefined' && ex.img && EXDB.find((e) => e.id === ex.img);
+    const base = { key: `e${i}`, cat: ex.cat || undefined, rest: ex.rest, deload: !!W.deload };
+    if (ex.load === 'double') {
+      const lo = sets[0].reps || 8, hi = Math.max(lo, sets[0].repsMax || lo);
+      const id = cpExId(ex, lo, hi);
+      const plan = accPlan(st, id, { sets: sets.length, lo, hi }, ex.equip, date, !!W.deload);
+      blocks.push({ ...base, type: 'sets', dp: true, title: `${ex.lift ? '主项' : '辅助'} · ${ex.name}`, ex: { id, name: ex.name, img: ex.img || undefined, cue: db && db.s ? db.s[0] : '' },
+        lift: ex.lift || undefined, sets: plan.sets, reps: `${lo}-${hi}`, rows: plan.rows, note: [ex.note, plan.note].filter(Boolean).join(' · ') });
+      return;
+    }
+    const oneRM = ex.load === 'pct' ? cpMax(st, pos.cycle, ex.lift) : 0;
+    const id = cpExId(ex);
+    const last = st.lastW && st.lastW[id];
+    const rows = sets.map((s) => {
+      let w = null;
+      if (oneRM && s.pct) w = roundTo(oneRM * s.pct / 100, inc);
+      else if (s.kg) w = s.kg;
+      else if (last && last.w && !s.warm) w = W.deload ? roundTo(last.w * 0.8, inc) : last.w;
+      const label = s.warm ? '热身' : s.repsMax > s.reps ? `${s.reps}–${s.repsMax} 次${s.rpe ? ` · RPE ${s.rpe}` : ''}` : s.rpe ? `RPE ${s.rpe}` : undefined;
+      return { w, reps: s.reps || s.repsMax || 1, pct: oneRM && s.pct ? s.pct : undefined, plus: !!s.amrap && !s.warm, label };
+    });
+    const rr = sets.filter((s) => !s.warm);
+    const repTxt = [...new Set(rr.map((s) => (s.repsMax > s.reps ? `${s.reps}-${s.repsMax}` : String(s.reps || s.repsMax))))].join('/');
+    const main = ex.load === 'pct';
+    blocks.push({ ...base, type: main ? 'main' : 'sets', title: `${main ? '主项' : '辅助'} · ${ex.name}`, ex: { id, name: ex.name, img: ex.img || undefined, cue: db && db.s ? db.s[0] : '' },
+      img: ex.img || undefined, lift: ex.lift || undefined, sub: main ? `1RM ${fmtW(roundTo(oneRM, 0.5))}kg` : ex.load === 'kg' ? '固定重量' : undefined,
+      sets: rows.length, reps: repTxt || '10', rows, note: ex.note || (ex.load === 'free' && !last ? '第一次做：选一个合适的重量，App 会记住' : '') });
+  });
+  if (W.deload) notes.push('减载周：重量轻是故意的，专注动作质量，让身体恢复');
+  let out = blocks;
+  if (r === 'tired') {
+    out = blocks.map((b) => (b.type === 'sets' ? { ...b, rows: b.rows.slice(0, Math.max(2, b.rows.length - 1)), sets: Math.max(2, b.sets - 1) } : { ...b, rows: b.rows.map((x) => ({ ...x, plus: false })) }));
+    notes.push('疲劳模式：辅助动作各减 1 组，"+" 组只做规定次数');
+  } else if (r === 'short') {
+    out = blocks.filter((b, i) => b.type === 'main' || i <= 2);
+    notes.push('时间紧：只做主项和前面的动作');
+  } else if (r === 'great') notes.push('状态好：可以按次数上限完成，但别牺牲动作');
+  return { pos, week: W, sessionId: sid, kind: D.focus === 'lower' ? 'lower' : 'upper', notes, blocks: out };
+}
+
 /* ---------- nutrition ---------- */
 const GOALS = {
   bulk: { label: '增肌', kcal: 250, protein: 2.0, fat: 0.9 },
@@ -772,5 +918,6 @@ if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
     position, recommend, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
-    progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
+    progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike,
+    normalizePlanDef, registerCustomPrograms, buildCustom, cpMax, cpSets, planLifts, isCustom, isCustomProg, CP_DEFAULT_DAYS };
 }

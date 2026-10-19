@@ -1018,3 +1018,17 @@ body:has(.free-bar) .rest { z-index: 25; bottom: calc(84px + env(safe-area-inset
 .week-pick { display: flex; align-items: center; gap: 6px; margin: 4px 0 2px; font-size: 13px; color: var(--muted); }
 .week-pick select { width: auto; flex: 1; min-width: 0; padding: 6px 8px; font-size: 14px; font-weight: 700; color: var(--text); border-radius: 10px; margin: 0; }
 .badge.skipped { background: var(--card-2); color: var(--muted); }
+
+/* 导入训练计划 */
+.prog-tools { justify-content: flex-end; gap: 8px; margin: -4px 4px 8px; }
+.pim-pick { position: relative; margin: 12px 0; }
+.pim-files { margin: 4px 0 8px; }
+.pim-files .kv span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pimText { width: 100%; resize: vertical; }
+.pim-err { color: var(--danger); font-size: 14px; }
+.pim-busy { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 14px; background: var(--card); color: var(--muted); }
+.pim-busy .spin { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line, rgba(127,127,127,.3)); border-top-color: var(--primary); animation: pim-spin .9s linear infinite; flex: none; }
+@keyframes pim-spin { to { transform: rotate(360deg); } }
+.pim-warn { border-left: 3px solid var(--warn); }
+.pim-warn p { margin: 6px 0 0; }
+.pim-sum .kv b { text-align: right; }

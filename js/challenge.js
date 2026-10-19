@@ -44,6 +44,19 @@ function weekPreviewHtml(st, weekAbs, compact, withStatus) {
 const shiftOptHtml = (rule) => `<label class="row check shift-opt"><input type="checkbox" data-autoshift ${autoShift() ? 'checked' : ''}>
   <span><b>自动顺延未完成的训练</b><span class="muted small">前一天没练也没关系，后面的安排会自动往后顺延一位；${rule}</span></span></label>`;
 function programCardHtml(cycle) {
+  if (isCustom()) {
+    const def = progOf().def;
+    const lifts = planLifts(def);
+    return `<div class="card"><h2>${lifts.length ? `主项 1RM（第 ${cycle + 1} 轮）` : '计划内容'}</h2>
+      ${lifts.map((l) => `<div class="kv"><span>${LIFT_NAMES[l]} 1RM</span><b>${fmtW(roundTo(cpMax(state, cycle, l), 0.5))}kg</b></div>`).join('')}
+      ${def.days.map((d) => `<div class="kv"><span>${esc(d.name)}</span><b class="small">${d.ex.map((e) => esc(e.name)).join('、')}</b></div>`).join('')}
+      <p class="muted">${def.desc ? `${esc(def.desc)} ` : ''}${lifts.length ? `按 1RM 百分比的动作每练完一轮上肢 +2.5kg、下肢 +5kg。` : ''}写着次数范围的辅助动作按双进阶：每组都做到上限，下次自动加重。</p>
+      ${progOf().flex ? shiftOptHtml('所有训练日都练完才进入下一轮的下一周。') : ''}
+      <div class="row wrap">${lifts.length ? '<button class="btn small ghost" data-act="edit-lifts">修改 1RM</button>' : ''}
+        <button class="btn small ghost" data-act="plan-share">分享计划文件</button>
+        ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">整体顺延一周</button>
+        <button class="btn small ghost" data-act="advance">往前调一周</button>`}</div></div>`;
+  }
   if (isIan()) {
     const lifts = ['bench', 'squat', 'deadlift'];
     return `<div class="card"><h2>训练最大重量 TM（第 ${cycle + 1} 轮）</h2>
@@ -107,7 +120,7 @@ function renderChallenge() {
       <div class="grow"><div class="muted">第 ${cycle + 1} 轮</div><h2>${esc(P.name)}</h2>
         <label class="week-pick">当前在 <select data-setweek>${Array.from({ length: P.weeks }, (_, i) => `<option value="${i + 1}" ${pos && pos.week === i + 1 ? 'selected' : ''}>第 ${i + 1} ${unitOf()} · ${esc(weekName(i + 1))}</option>`).join('')}</select></label>
         ${pos ? '' : `<div class="muted">${fmtDate(parseKey(state.startDate))} 开始</div>`}
-        <div class="muted">${isIan() ? '胸 → 腿 → 肩 → 背 · 5/3/1 + 双进阶' : isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
+        <div class="muted">${isCustom() ? `${progOf().def.days.map((d) => esc(d.name)).join(' · ')}${progOf().flex ? ' · 按顺序轮换' : ''}` : isIan() ? '胸 → 腿 → 肩 → 背 · 5/3/1 + 双进阶' : isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
     ${programCardHtml(cycle)}`;
   for (let w = 0; w < P.weeks; w++) {
     const weekAbs = cycle * P.weeks + w;
@@ -126,12 +139,14 @@ function renderChallenge() {
 
 /** Pick another training program; setting it up goes through the questionnaire's plan steps. */
 function openProgramPicker() {
-  openSheet('选择训练计划', `${Object.values(PROGRAMS).map((p) => {
+  openSheet('选择训练计划', `<button class="card mk-entry" data-act="plan-import"><span class="mk-entry-ic">✨</span><span class="grow"><b>导入训练计划</b><span class="muted small">上传 Excel / PDF / Word / 图片，AI 自动生成计划；也能打开朋友分享的计划文件</span></span><span class="muted">›</span></button>
+    ${Object.values(PROGRAMS).filter((p) => !p.hidden).map((p) => {
     const on = progOf().id === p.id;
     const saved = state.programs && state.programs[p.id];
     return `<button class="prog-card${on ? ' on' : ''}" data-program="${p.id}">
       <div class="row between"><b>${esc(p.name)}</b>${on ? '<span class="tag">当前</span>' : saved ? '<span class="tag">有进度</span>' : ''}</div>
-      <div class="muted">${p.weeks} 周 · 一周 ${p.days} 练</div><p>${esc(p.desc)}</p></button>`;
+      <div class="muted">${p.flex ? `${p.weeks} ${p.unit === '周' ? '周' : '轮'} · ${p.days} 个训练日按顺序轮换` : `${p.weeks} 周 · 一周 ${p.days} 练`}${p.custom ? ' · 导入的计划' : ''}</div><p>${esc(p.desc)}</p></button>
+      ${p.custom ? `<div class="row wrap prog-tools"><button class="btn tiny ghost" data-plan-share="${p.id}">分享</button>${on ? '' : `<button class="btn tiny ghost" data-plan-del="${p.id}">删除</button>`}</div>` : ''}`;
   }).join('')}
     <p class="muted">切换后，之前计划的训练记录都会保留在「历史」里；切回来时可以接着之前的进度练。</p>`, { type: 'program' });
 }
@@ -158,8 +173,17 @@ function bindChallenge() {
     toast(e.target.checked ? '已开启：没练的训练会自动往后顺延' : '已关闭：按日历四天一循环');
   });
   $('#sheet').addEventListener('click', (e) => {
+    if (!sheetCtx || sheetCtx.type !== 'program') return;
+    const t = e.target.closest('button');
+    if (t && t.dataset.act === 'plan-import') return openPlanImport();
+    if (t && t.dataset.planShare) return sharePlanFile(t.dataset.planShare);
+    if (t && t.dataset.planDel) {
+      if (!confirm(`删除「${PROGRAMS[t.dataset.planDel].name}」？\n\n用这个计划练过的记录会保留在「历史」里。`)) return;
+      state.customPrograms[t.dataset.planDel].hidden = true;
+      save(); registerCustomPrograms(state); return openProgramPicker();
+    }
     const b = e.target.closest('[data-program]');
-    if (!b || !sheetCtx || sheetCtx.type !== 'program') return;
+    if (!b) return;
     closeSheet();
     if (b.dataset.program === progOf().id) return;
     startWizard(true, b.dataset.program, 'program');
@@ -176,6 +200,7 @@ function bindChallenge() {
     if (a === 'edit-lifts') startWizard(true, null, 'lifts');
     else if (a === 'switch-program') openProgramPicker();
     else if (a === 'market') openMarket();
+    else if (a === 'plan-share') sharePlanFile(progOf().id);
     else if (a === 'postpone' && confirm(`把整个计划往后推一${unitOf() === '周' ? '周' : '个循环'}？（重新按当前这一${unitOf()}的内容练）`)) { state.startDate = dateKey(addDays(parseKey(state.startDate), periodOf())); save(); render(); toast('已顺延'); }
     else if (a === 'advance' && confirm(`把计划往前调一${unitOf() === '周' ? '周' : '个循环'}？（相当于跳到下一${unitOf()}）`)) { state.startDate = dateKey(addDays(parseKey(state.startDate), -periodOf())); save(); render(); }
   });

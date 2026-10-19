@@ -314,6 +314,27 @@ Google 一键登录：
 
 动作数据和图片来自 [free-exercise-db](https://github.com/yuhonas/free-exercise-db)（公共领域 / Unlicense），中文翻译为本项目制作。
 
+## 导入训练计划（AI）
+
+挑战 →「切换计划」→「导入训练计划」。上传别人发来的计划（Excel .xlsx、Word .docx、PDF、照片 / 截图、CSV、文本，或直接粘贴），AI 会把它转换成 App 的计划格式：
+
+- 卧推 / 深蹲 / 硬拉 / 推举按 **1RM 百分比**计算，每练完一轮上肢 +2.5kg、下肢 +5kg；
+- 写着次数范围的辅助动作按 **双进阶**（每组做到上限，下次自动加重）；固定重量照原样；其他动作记住上次的重量；
+- 每周的变化（波浪、加量、减载周）逐周保留；按星期几练或按顺序轮换（自动顺延）都支持。
+
+导入后先预览（有拿不准的地方会列在「需要你确认」里），确认后走问卷的 1RM 和训练安排两步就能开始。导入的计划可以「分享」成 `.ianzplan.json` 文件发给朋友，对方在同一个入口打开文件即可导入，**不需要 AI、不需要登录**。
+
+Excel / Word 在手机上直接解析成文字，PDF 和图片原样发给 AI。旧版 .xls / .doc 请先另存为 .xlsx / .docx。
+
+### 部署（一次）
+
+1. SQL Editor 运行 `supabase/plan_import.sql`（每人每天的次数限制）。
+2. 在 [Anthropic Console](https://platform.claude.com/) 创建 API Key，填到 Supabase → Edge Functions → **Secrets**：`ANTHROPIC_API_KEY`。**只放在这里，不要写进代码或发给任何人。**
+3. 部署函数 `supabase/functions/plan-import`（保持 **Verify JWT 开启**）：`supabase functions deploy plan-import`，或在控制台新建函数粘贴 `index.ts`。
+4. 可选 Secrets：`PLAN_IMPORT_DAILY`（每人每天次数，默认 10）、`PLAN_IMPORT_MODEL`（默认 `claude-opus-5-5`）。
+
+函数用 Claude 的结构化输出（JSON Schema）生成计划，开启了自适应思考；如果模型因为安全策略拒绝，会自动换 Anthropic 推荐的备用模型重试（`fallbacks: "default"`）。只有登录用户能调用，按用户限流，并记录每次的 token 用量（`plan_imports` 表）。
+
 ## 文件
 
 ```
@@ -337,6 +358,8 @@ js/challenge.js   挑战页（12 周计划）
 js/library.js     动作库
 js/history.js     历史与数据分析
 js/me.js          我的
+js/planimport.js  导入训练计划（读 Excel / Word、调用 AI、预览、分享计划文件）
+supabase/functions/plan-import/  AI 把计划转换成 App 格式（Claude）
 js/app.js         导航与启动
 sw.js        离线缓存与通知
 tests/       node tests/engine.test.js && node tests/stats.test.js

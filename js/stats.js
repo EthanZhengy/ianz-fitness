@@ -42,6 +42,7 @@ function sessionRef(st, date, sid) {
   if (!pos || !SESSIONS[sid]) return 0;
   if (programOfSession(sid) === 'mike') return mikeMax(st, pos.cycle, sid === 'mike2' ? 'cg' : 'bench');
   if (programOfSession(sid) === 'ppl') return pplMax(st, pos.cycle, SESSIONS[sid].main || 'bench');
+  if (isCustomProg(programOfSession(sid))) return SESSIONS[sid].main ? cpMax(st, pos.cycle, SESSIONS[sid].main) : 0;
   if (programOfSession(sid) === 'ian') return tmFor(st, pos.cycle, pos.week, SESSIONS[sid].main || 'bench') / 0.9;
   return tmFor(st, pos.cycle, pos.week, SESSIONS[sid].main) / 0.9;
 }
@@ -162,10 +163,11 @@ function summarizeSession(st, date, sid, log) {
   const pos = s.pos;
   const main = s.blocks.find((b) => b.type === 'main') || s.blocks[0];
   const prog = programOfSession(sid);
-  const mike = prog === 'mike', ppl = prog === 'ppl';
+  const custom = isCustomProg(prog);
+  const mike = prog === 'mike', ppl = prog === 'ppl' || custom; // no "+" sets needed: e1RM from the heaviest set
   const secondary = SESSIONS[sid].secondary;
   const ian = prog === 'ian';
-  const mainId = mike ? ['bb_bench'] : ppl ? (main.lift ? [main.lift === 'squat' ? 'bb_squat' : 'bb_bench'] : []) : main.lift ? [variantOf(st, main.lift).id] : [];
+  const mainId = custom ? [] : mike ? ['bb_bench'] : ppl ? (main.lift ? [main.lift === 'squat' ? 'bb_squat' : 'bb_bench'] : []) : main.lift ? [variantOf(st, main.lift).id] : [];
   const out = { lift: main.lift, variant: (prog === '531' || ian) && main.lift ? variantOf(st, main.lift).name : main.title.replace(/^.*· /, ''), volume: 0, sets: 0, e1rm: null, top: null, test: null,
     exIds: mainId.concat(s.test || !secondary ? [] : [variantOf(st, secondary).id], s.blocks.filter((b) => b.ex).map((b) => b.ex.id)) };
   if (s.test) {
@@ -306,7 +308,8 @@ function tmSeries(st, lift, today) {
   return Array.from({ length: last + 1 }, (_, w) => ({
     weekAbs: w, date: cycleRange(st, w).start,
     // 5/3/1 plots its training max; the Mike plan works straight off the bench 1RM
-    tm: isIan(st) ? (lift !== 'press' ? roundTo(tmFor(st, Math.floor(w / n), (w % n) + 1, lift), 0.5) : null)
+    tm: isCustom(st) ? (planLifts(progOf(st).def).includes(lift) ? roundTo(cpMax(st, Math.floor(w / n), lift), 0.5) : null)
+      : isIan(st) ? (lift !== 'press' ? roundTo(tmFor(st, Math.floor(w / n), (w % n) + 1, lift), 0.5) : null)
       : isPPL(st) ? (['bench', 'squat'].includes(lift) ? roundTo(pplMax(st, Math.floor(w / n), lift), 0.5) : null)
       : isMike(st) ? (lift === 'bench' ? roundTo(mikeMax(st, Math.floor(w / n), 'bench'), 0.5) : null)
       : roundTo(tmFor(st, Math.floor(w / n), (w % n) + 1, lift), 0.5),
