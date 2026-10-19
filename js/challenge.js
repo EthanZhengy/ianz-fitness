@@ -5,6 +5,7 @@ const BADGE = {
   app: '<span class="badge app">✓ App 完成</span>',
   offline: '<span class="badge offline">📝 App 外完成</span>',
   missed: '<span class="badge missed">未完成</span>',
+  skipped: '<span class="badge skipped">已跳过</span>',
   upcoming: '',
 };
 
@@ -35,7 +36,7 @@ function weekPreviewHtml(st, weekAbs, compact, withStatus) {
     }).join('');
     let action = '';
     if (stat && stat.status === 'offline') action = `<button class="btn tiny ghost" data-unmark="${sid}" data-week="${weekAbs}">取消标记</button>`;
-    else if (stat && stat.status !== 'app' && dayDiff(start, today) >= 0) action = `<button class="btn tiny ghost" data-mark="${sid}" data-week="${weekAbs}">标记 App 外完成</button>`;
+    else if (stat && !['app', 'skipped'].includes(stat.status) && dayDiff(start, today) >= 0) action = `<button class="btn tiny ghost" data-mark="${sid}" data-week="${weekAbs}">标记 App 外完成</button>`;
     return `<div class="preview ${stat ? stat.status : ''}"><div class="row between"><span class="row"><span class="tag">${sessionName(sid, week)}</span>${stat ? BADGE[stat.status] : ''}</span><span class="muted">${periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `第 ${i + 1} 练`} ${fmtDate(date)}</span></div>${lines}${action ? `<div class="row" style="justify-content:flex-end">${action}</div>` : ''}</div>`;
   }).join('');
 }
@@ -94,7 +95,7 @@ function renderChallenge() {
   const cycle = pos ? pos.cycle : 0;
   const weeksDone = Array.from({ length: P.weeks }, (_, w) => cycle * P.weeks + w).filter((wa) => {
     const wk = (wa % P.weeks) + 1;
-    return orderFor(wk).slice(0, requiredFor(wk)).every((sid) => ['app', 'offline'].includes(sessionStatus(state, wa, sid, today).status));
+    return orderFor(wk).slice(0, requiredFor(wk)).every((sid) => ['app', 'offline', 'skipped'].includes(sessionStatus(state, wa, sid, today).status));
   }).length;
   const C = 2 * Math.PI * 42;
   let html = `<div class="page-head"><h1>挑战</h1><button class="pill-btn big" data-act="switch-program">切换计划</button></div>
@@ -104,7 +105,8 @@ function renderChallenge() {
         <circle class="val" cx="50" cy="50" r="42" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - weeksDone / P.weeks)).toFixed(1)}" transform="rotate(-90 50 50)"/></svg>
         <div class="ring-txt"><b>${weeksDone}</b><small>/${P.weeks} ${unitOf()}</small></div></div></div>
       <div class="grow"><div class="muted">第 ${cycle + 1} 轮</div><h2>${esc(P.name)}</h2>
-        <div class="muted">${pos ? `当前第 ${pos.week} ${unitOf()} · ${esc(weekName(pos.week))}` : `${fmtDate(parseKey(state.startDate))} 开始`}</div>
+        <label class="week-pick">当前在 <select data-setweek>${Array.from({ length: P.weeks }, (_, i) => `<option value="${i + 1}" ${pos && pos.week === i + 1 ? 'selected' : ''}>第 ${i + 1} ${unitOf()} · ${esc(weekName(i + 1))}</option>`).join('')}</select></label>
+        ${pos ? '' : `<div class="muted">${fmtDate(parseKey(state.startDate))} 开始</div>`}
         <div class="muted">${isIan() ? '胸 → 腿 → 肩 → 背 · 5/3/1 + 双进阶' : isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
     ${programCardHtml(cycle)}`;
   for (let w = 0; w < P.weeks; w++) {
@@ -114,7 +116,7 @@ function renderChallenge() {
     const sts = orderFor(w + 1).slice(0, requiredFor(w + 1)).map((sid) => sessionStatus(state, weekAbs, sid, today).status);
     const nApp = sts.filter((x) => x === 'app').length, nOff = sts.filter((x) => x === 'offline').length;
     const past = pos && weekAbs <= pos.weekAbs;
-    const summary = !past ? '' : nApp + nOff >= sts.length ? `<span class="badge ${nApp ? 'app' : 'offline'}">${nOff && !nApp ? '📝' : '✓'} 已完成</span>`
+    const summary = !past ? '' : sts.every((x) => x === 'skipped') ? BADGE.skipped : nApp + nOff >= sts.length ? `<span class="badge ${nApp ? 'app' : 'offline'}">${nOff && !nApp ? '📝' : '✓'} 已完成</span>`
       : `<span class="badge${isCur ? '' : ' missed'}">${nApp + nOff}/${sts.length}</span>`;
     html += `<details class="card week"${isCur ? ' open' : ''}><summary><b>第 ${w + 1} ${unitOf()}</b> ${esc(isPPL() ? weekName(w + 1).replace(/^循环. · /, '') : weekName(w + 1))} ${summary}
       <span class="muted">${fmtDate(start)}起${isCur ? ` · 本${unitOf()}` : ''}</span></summary>${weekPreviewHtml(state, weekAbs, false, true)}</details>`;
@@ -136,6 +138,15 @@ function openProgramPicker() {
 
 function bindChallenge() {
   $('#view-challenge').addEventListener('change', (e) => {
+    if (e.target.dataset.setweek !== undefined) {
+      const w = Number(e.target.value);
+      const pos = position(state, new Date());
+      if (pos && pos.week === w) return;
+      if (!confirm(`把当前进度调到第 ${w} ${unitOf()}「${weekName(w)}」？\n\n从今天起按第 ${w} ${unitOf()}的重量和安排训练，已有的训练记录都保留。`)) { render(); return; }
+      setCurrentWeek(state, w);
+      save(); render(); syncPushSoon();
+      return toast(`已调整到第 ${w} ${unitOf()}`);
+    }
     if (e.target.dataset.autoshift === undefined) return;
     if (!e.target.checked) {
       // keep today's cycle when going back to the calendar: re-anchor the start date

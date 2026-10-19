@@ -230,7 +230,8 @@ function sessionStatus(st, weekAbs, sid, today) {
   const idx = orderFor((weekAbs % progOf(st).weeks) + 1, st).indexOf(sid);
   const date = addDays(start, st.schedule[idx] ?? idx);
   const weekEnd = addDays(start, P - 1);
-  return { status: dayDiff(weekEnd, today) > 0 ? 'missed' : 'upcoming', date };
+  if (dayDiff(weekEnd, today) <= 0) return { status: 'upcoming', date };
+  return { status: weekSkipped(st, weekAbs, weekEnd) ? 'skipped' : 'missed', date };
 }
 
 /**

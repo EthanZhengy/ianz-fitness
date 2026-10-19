@@ -71,17 +71,24 @@ function shiftCycles(st) {
   const ev = [];
   Object.keys(st.logs || {}).forEach((k) => {
     const l = st.logs[k];
-    if (k >= st.startDate && l && l.done && order.includes(l.session)) ev.push([k, 0, l.session]);
+    if (k >= st.startDate && l && l.done && order.includes(l.session)) ev.push([k, 1, l.session]);
   });
-  (st.cycleBreaks || []).forEach((k) => { if (k >= st.startDate) ev.push([k, 1]); });
+  (st.cycleBreaks || []).forEach((k) => { if (k >= st.startDate) ev.push([k, 2]); });
+  // 调整当前周: from this day on the plan is at week `wa` (processed before that day's sessions)
+  (st.weekAdjust || []).forEach((a) => { if (a.date >= st.startDate) ev.push([a.date, 0, a.wa]); });
   ev.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]));
   const cycles = [];
-  let c = { start: parseKey(st.startDate), end: null, done: [] };
-  ev.forEach(([k, isBreak, sid]) => {
+  let c = { start: parseKey(st.startDate), end: null, done: [], wa: 0 };
+  ev.forEach(([k, type, val]) => {
     const d = parseKey(k);
-    if (isBreak) {
+    if (type === 0) { // jump: close what is open and start week `val` today
+      if (c.start < d) { c.end = addDays(d, -1); cycles.push(c); }
+      c = { start: d, end: null, done: [], wa: val };
+      return;
+    }
+    if (type === 2) {
       c.end = d < c.start ? addDays(c.start, -1) : d;
-      cycles.push(c); c = { start: addDays(c.end, 1), end: null, done: [] };
+      cycles.push(c); c = { start: addDays(c.end, 1), end: null, done: [], wa: c.wa + 1 };
       return;
     }
     if (d < c.start) { // trained on the rest day: the next cycle starts right away
@@ -89,26 +96,55 @@ function shiftCycles(st) {
       if (prev) prev.end = addDays(d, -1);
       c.start = d;
     }
-    if (!c.done.includes(sid)) c.done.push(sid);
+    if (!c.done.includes(val)) c.done.push(val);
     if (order.every((x) => c.done.includes(x))) {
       c.end = addDays(d, restAfter); // rest day(s) after the cycle (推拉腿: 1, Ian: 0)
-      cycles.push(c); c = { start: addDays(d, restAfter + 1), end: null, done: [] };
+      cycles.push(c); c = { start: addDays(d, restAfter + 1), end: null, done: [], wa: c.wa + 1 };
     }
   });
   cycles.push(c);
   return cycles;
 }
-/** First and last day of program period `weekAbs` (estimated for periods that have not started yet). */
+/** First and last day of program period `weekAbs` (estimated for periods that have not started yet; skipped periods are empty). */
 function cycleRange(st, weekAbs) {
   const P = periodOf(st);
   if (!autoShift(st)) { const start = addDays(parseKey(cur(st).startDate), weekAbs * P); return { start, end: addDays(start, P - 1) }; }
   const cs = shiftCycles(st);
   const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
   const open = (c) => c.end || addDays(c.start > today ? c.start : today, P - 1);
-  if (weekAbs < cs.length) return { start: cs[weekAbs].start, end: open(cs[weekAbs]) };
+  for (let i = cs.length - 1; i >= 0; i--) if (cs[i].wa === weekAbs) return { start: cs[i].start, end: open(cs[i]) };
   const last = cs[cs.length - 1];
-  const start = addDays(open(last), 1 + (weekAbs - cs.length) * P);
-  return { start, end: addDays(start, P - 1) };
+  if (weekAbs > last.wa) {
+    const start = addDays(open(last), 1 + (weekAbs - last.wa - 1) * P);
+    return { start, end: addDays(start, P - 1) };
+  }
+  // jumped over: an empty range just before the next period that exists
+  const next = cs.find((c) => c.wa > weekAbs) || last;
+  return { start: next.start, end: addDays(next.start, -1), skipped: true };
+}
+/** Week (0-based, absolute) a jump moved past without training it — shown as 已跳过 instead of 未完成. */
+function weekSkipped(st, weekAbs, end) {
+  return (cur(st).weekAdjust || []).some((a) => a.wa > weekAbs && dateKey(end) < a.date);
+}
+/** 调整当前周: put today in week `week` (1-based) of the current round. */
+function setCurrentWeek(st, week, today = new Date()) {
+  const P = periodOf(st);
+  const n = progOf(st).weeks;
+  const pos = position(st, today);
+  const cycle = pos ? pos.cycle : 0;
+  const wa = cycle * n + week - 1;
+  const key = dateKey(today);
+  if (!pos) st.startDate = dateKey(P === 7 ? mondayOf(today) : today);
+  if (autoShift(st)) {
+    if (!pos) st.weekAdjust = [];
+    st.weekAdjust = (st.weekAdjust || []).filter((a) => a.date !== key).concat({ date: key, wa });
+  } else {
+    // today's period becomes period `wa`: move the start date so that period begins where today's does
+    const base = pos ? pos.weekStart : parseKey(st.startDate);
+    st.startDate = dateKey(addDays(base, -wa * P));
+    st.weekAdjust = (st.weekAdjust || []).filter((a) => a.date !== key).concat({ date: key, wa });
+  }
+  return wa;
 }
 const slotName = (st, date) => (periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `循环第 ${slotOf(st, date) + 1} 天`);
 const isTestWeek = (week, st) => ['531', 'mike', 'ian'].includes(progOf(st).id) && week === progOf(st).weeks;
@@ -143,7 +179,8 @@ function position(st, date) {
     let i = cs.length - 1;
     while (i > 0 && cs[i].start > date) i--;
     const end = cs[i].end || addDays(cs[i].start > date ? cs[i].start : date, P - 1);
-    return { weekAbs: i, cycle: Math.floor(i / n), week: (i % n) + 1, weekStart: cs[i].start, weekEnd: end, shift: true };
+    const wa = cs[i].wa;
+    return { weekAbs: wa, cycle: Math.floor(wa / n), week: (wa % n) + 1, weekStart: cs[i].start, weekEnd: end, shift: true };
   }
   const weekAbs = Math.floor(diff / P);
   return {
@@ -735,5 +772,5 @@ if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
     position, recommend, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
-    progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
+    progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
 }

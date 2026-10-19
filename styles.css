@@ -1013,3 +1013,8 @@ body:has(.free-bar) .rest { z-index: 25; bottom: calc(84px + env(safe-area-inset
 .shift-opt { align-items: flex-start; gap: 10px; background: var(--card-2); border-radius: 14px; padding: 12px; margin: 10px 0; }
 .shift-opt input { margin-top: 3px; flex: none; }
 .shift-opt span { display: flex; flex-direction: column; gap: 2px; }
+
+/* 挑战: 当前在第几周 */
+.week-pick { display: flex; align-items: center; gap: 6px; margin: 4px 0 2px; font-size: 13px; color: var(--muted); }
+.week-pick select { width: auto; flex: 1; min-width: 0; padding: 6px 8px; font-size: 14px; font-weight: 700; color: var(--text); border-radius: 10px; margin: 0; }
+.badge.skipped { background: var(--card-2); color: var(--muted); }
