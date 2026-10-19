@@ -35,6 +35,7 @@ function setDraftProgram(id) {
     wiz.inputs.mikeBench = { w: d.mike.bench1RM || '', reps: 1 };
     wiz.inputs.mikeCg = { w: d.mike.cg1RM || '', reps: 1 };
   }
+  if (id === 'ian') d.schedule = [0, 1, 2, 3];
   if (id === 'ppl') {
     d.ppl = { ...defaultState().ppl, ...d.ppl };
     if (!d.ppl.bench1RM && d.lifts.bench.variant === 'bb_bench') d.ppl.bench1RM = d.lifts.bench.oneRM || 0;
@@ -60,10 +61,10 @@ function fixVariants(d) {
   });
 }
 
-function liftsStep531(d) {
+function liftsStep531(d, lifts = LIFTS) {
   return `<h2>主项动作与最大重量</h2>
     <p class="muted">填你<b>最近能做到的重量和次数</b>：做过 1 次极限就填次数 1；不知道极限，填一个你能做 3–5 次的重量也行，我会估算 1RM。训练最大重量 TM = 1RM × 90%。</p>
-    ${LIFTS.map((l) => {
+    ${lifts.map((l) => {
       const cur = d.lifts[l];
       const best = bestVariant(d, l).id;
       const opts = VARIANTS[l].map((v) => {
@@ -149,7 +150,7 @@ function renderWizard() {
       body = `<h2>选择训练计划</h2><p class="muted">之后随时可以在「挑战」页切换，训练记录都会保留。</p>
         ${Object.values(PROGRAMS).map((pr) => `<button class="prog-card${d.program === pr.id ? ' on' : ''}" data-prog="${pr.id}">
           <div class="row between"><b>${esc(pr.name)}</b>${d.program === pr.id ? '<span class="tag">已选</span>' : ''}</div>
-          <div class="muted">${pr.period ? `${pr.weeks} 个循环 · ${pr.period} 天一循环` : `${pr.weeks} 周 · 一周 ${pr.days} 练`}</div><p>${esc(pr.desc)}</p></button>`).join('')}`;
+          <div class="muted">${pr.id === 'ian' ? '4 周一个周期 · 四个训练日轮换' : pr.period ? `${pr.weeks} 个循环 · ${pr.period} 天一循环` : `${pr.weeks} 周 · 一周 ${pr.days} 练`}</div><p>${esc(pr.desc)}</p></button>`).join('')}`;
       break;
     case 'body':
       body = `<h2>身体情况与器械</h2>
@@ -162,7 +163,7 @@ function renderWizard() {
         <div class="chips">${Object.entries(EQUIPMENT).map(([k, n]) => chip(n, `data-equip="${k}"`, d.equipment.includes(k))).join('')}</div>`;
       break;
     case 'lifts':
-      body = `${isPPL(d) ? liftsStepPPL(d) : isMike(d) ? liftsStepMike(d) : liftsStep531(d)}
+      body = `${isIan(d) ? liftsStep531(d, ['bench', 'squat', 'deadlift']) : isPPL(d) ? liftsStepPPL(d) : isMike(d) ? liftsStepMike(d) : liftsStep531(d)}
         <label>最小加重单位（杠铃片）</label>
         <div class="chips">${[1.25, 2.5, 5].map((v) => chip(`${v}kg`, `data-plate="${v}"`, d.plateInc === v)).join('')}</div>`;
       break;
@@ -171,7 +172,8 @@ function renderWizard() {
       const sortedDays = d.schedule.slice().sort((a, b) => a - b);
       const startWeekNow = wiz.startOpt === 'week' ? wiz.startWeek : 1;
       body = `<h2>训练安排${isMike(d) || isPPL(d) ? '' : '与偏好'}</h2>
-        ${isPPL(d) ? `<div class="card ppl-cycle"><b>推 → 拉 → 腿 → 休</b><p class="muted">四天一循环，从开始那天起自动往下排，不按星期几。哪天有事没练，第二天接着练下一个就行；一个循环练完三次就算完成。</p></div>` : `<label>每周哪 ${P.days} 天训练？（计划是一周 ${P.days} 练）</label>
+        ${isIan(d) ? `<div class="card ppl-cycle"><b>胸 → 腿 → 肩 → 背</b><p class="muted">四个训练日按顺序轮，不按星期几；练完一个才排下一个，哪天没练第二天接着练。四天都练完算 5/3/1 的一「周」。深蹲和硬拉中间隔着肩日，下背有时间恢复。</p></div>`
+          : isPPL(d) ? `<div class="card ppl-cycle"><b>推 → 拉 → 腿 → 休</b><p class="muted">四天一循环，从开始那天起自动往下排，不按星期几。哪天有事没练，第二天接着练下一个就行；一个循环练完三次就算完成。</p></div>` : `<label>每周哪 ${P.days} 天训练？（计划是一周 ${P.days} 练）</label>
         <div class="chips">${WEEKDAYS.map((w, i) => chip(w, `data-day="${i}"`, d.schedule.includes(i))).join('')}</div>
         <p class="muted">${sortedDays.length === P.days ? sortedDays.map((x, i) => `${WEEKDAYS[x]} ${labels[i]}`).join(' · ') : `已选 ${sortedDays.length} 天，请选 ${P.days} 天`}</p>`}
         ${isMike(d) ? '<p class="muted">两次推之间隔 2–3 天，比如周一第一推、周四或周五第二推。其他部位照常训练，但不要上太大重量。</p>' : ''}
@@ -179,7 +181,8 @@ function renderWizard() {
         <label>从哪里开始</label>
         <div class="chips">
           ${wiz.startOpt === 'keep' || (state.onboarded && ((state.program || '531') === d.program || (state.programs || {})[d.program])) ? chip('保持当前进度', 'data-start="keep"', wiz.startOpt === 'keep') : ''}
-          ${isPPL(d) ? chip('今天开始（今天练推）', 'data-start="this"', wiz.startOpt === 'this') + chip('明天开始', 'data-start="next"', wiz.startOpt === 'next')
+          ${isIan(d) ? chip('今天开始（今天练胸）', 'data-start="this"', wiz.startOpt === 'this') + chip('明天开始', 'data-start="next"', wiz.startOpt === 'next')
+            : isPPL(d) ? chip('今天开始（今天练推）', 'data-start="this"', wiz.startOpt === 'this') + chip('明天开始', 'data-start="next"', wiz.startOpt === 'next')
             : chip('本周开始（第 1 周）', 'data-start="this"', wiz.startOpt === 'this') + chip('下周一开始', 'data-start="next"', wiz.startOpt === 'next')}
           ${chip('我已经在练了', 'data-start="week"', wiz.startOpt === 'week')}
         </div>
@@ -187,7 +190,7 @@ function renderWizard() {
           ${wiz.startWeek > 1 ? `<p class="muted">第 1–${wiz.startWeek - 1} ${unitOf(d)}会标记为 <span class="badge offline">📝 App 外完成</span>，之后可以在「挑战」里逐次修改。</p>` : ''}` : ''}
         ${wiz.startOpt === 'this' || wiz.startOpt === 'week' ? `<label>这${isPPL(d) ? '个循环' : '周'}已经练过哪些？（在 App 外完成的）</label>
           <div class="chips">${orderFor(startWeekNow, d).map((s) => chip(sessionName(s, startWeekNow), `data-done-now="${s}"`, wiz.doneNow.includes(s))).join('')}</div>` : ''}
-        ${isMike(d) || isPPL(d) ? '' : preferencesHtml(d)}`;
+        ${isMike(d) || isPPL(d) || isIan(d) ? '' : preferencesHtml(d)}`;
       break;
     }
     case 'summary': {
@@ -195,7 +198,11 @@ function renderWizard() {
       const today = new Date();
       const pos0 = position(tmp, today) || position(tmp, parseKey(tmp.startDate));
       const wk = pos0 ? pos0.week : 1;
-      const maxes = isPPL(d)
+      const maxes = isIan(d)
+        ? `<div class="card"><h3>训练最大重量（TM = 90% 1RM）</h3>
+            <table class="tm"><tr><th></th><th>TM</th><th>第1周 +组</th><th>第3周 +组</th></tr>
+            ${['bench', 'squat', 'deadlift'].map((l) => { const tm = ianTM(tmp, 0, l); return `<tr><td>${variantOf(tmp, l).name.replace(/（.*）/, '')}</td><td>${fmtW(roundTo(tm, 0.5))}</td><td>${fmtW(roundTo(tm * 0.85, d.plateInc))}×5+</td><td>${fmtW(roundTo(tm * 0.95, d.plateInc))}×1+</td></tr>`; }).join('')}</table>`
+        : isPPL(d)
         ? `<div class="card"><h3>主项重量（按 1RM 百分比）</h3>
             <table class="tm"><tr><th>循环</th><th>组×次</th><th>卧推</th><th>深蹲</th></tr>
             ${PPL_CYCLES.map((c, i) => `<tr><td>${'一二三四五六'[i]}</td><td>${c.main[0]}×${c.main[1]} @${c.main[2]}%</td><td>${fmtW(roundTo(pplMax(tmp, 0, 'bench') * c.main[2] / 100, d.plateInc))}</td><td>${fmtW(roundTo(pplMax(tmp, 0, 'squat') * c.main[2] / 100, d.plateInc))}</td></tr>`).join('')}</table>`
@@ -261,10 +268,10 @@ function computeStart() {
     const saved = (state.program || '531') !== wiz.draft.program && (state.programs || {})[wiz.draft.program];
     return saved ? saved.startDate : state.startDate;
   }
-  if (isPPL(wiz.draft)) {
+  if (isPPL(wiz.draft) || isIan(wiz.draft)) {
     const today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     if (wiz.startOpt === 'next') return dateKey(addDays(today, 1));
-    if (wiz.startOpt === 'week') return dateKey(addDays(today, -(wiz.startWeek - 1) * 4));
+    if (wiz.startOpt === 'week') return dateKey(addDays(today, -(wiz.startWeek - 1) * periodOf(wiz.draft)));
     return dateKey(today);
   }
   if (wiz.startOpt === 'next') return dateKey(addDays(mon, 7));
@@ -279,6 +286,7 @@ function wizardValidate(id = stepId()) {
     if (!(p.age > 10 && p.height > 100 && p.weight > 30)) return '请填写正确的年龄、身高和体重';
   }
   if (id === 'lifts') {
+    if (isIan(d)) return ['bench', 'squat', 'deadlift'].every((l) => d.lifts[l].oneRM > 0) ? null : '请填写卧推、深蹲、硬拉的重量';
     if (isPPL(d)) return d.ppl.bench1RM > 0 && d.ppl.squat1RM > 0 ? null : '请填写卧推和深蹲的重量';
     if (isMike(d) && !(d.mike.bench1RM > 0)) return '请填写卧推的重量';
     if (!isMike(d) && LIFTS.some((l) => !(d.lifts[l].oneRM > 0))) return '请填写四个主项的重量';

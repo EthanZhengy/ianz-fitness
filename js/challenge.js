@@ -40,7 +40,20 @@ function weekPreviewHtml(st, weekAbs, compact, withStatus) {
   }).join('');
 }
 
+const shiftOptHtml = (rule) => `<label class="row check shift-opt"><input type="checkbox" data-autoshift ${autoShift() ? 'checked' : ''}>
+  <span><b>自动顺延未完成的训练</b><span class="muted small">前一天没练也没关系，后面的安排会自动往后顺延一位；${rule}</span></span></label>`;
 function programCardHtml(cycle) {
+  if (isIan()) {
+    const lifts = ['bench', 'squat', 'deadlift'];
+    return `<div class="card"><h2>训练最大重量 TM（第 ${cycle + 1} 个周期）</h2>
+      <table class="tm"><tr><th></th><th>TM</th><th>第1周</th><th>第2周</th><th>第3周</th></tr>
+      ${lifts.map((l) => { const tm = ianTM(state, cycle, l); const inc = incOf(state, variantOf(state, l)); return `<tr><td>${variantOf(state, l).name.replace(/（.*）/, '')}</td><td>${fmtW(roundTo(tm, 0.5))}</td>${IAN_WEEKS.slice(0, 3).map((w) => `<td>${fmtW(roundTo(tm * w.sets[2][0] / 100, inc))}×${w.sets[2][1]}+</td>`).join('')}</tr>`; }).join('')}</table>
+      <p class="muted">胸 → 腿 → 肩 → 背，四天练完算一「周」。5/3/1：第 1 周 5 次组、第 2 周 3 次组、第 3 周 5/3/1、第 4 周减载；每个周期后卧推 TM +2.5kg、深蹲 / 硬拉 +5kg。前三周主项后做 FSL 3×5。辅助动作双进阶：每组都做到次数上限，下次自动加重。</p>
+      ${shiftOptHtml('胸、腿、肩、背都练完才进入下一周。')}
+      <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改 1RM / 主项动作</button>
+        ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">整体顺延一周</button>
+        <button class="btn small ghost" data-act="advance">往前调一周</button>`}</div></div>`;
+  }
   if (isPPL()) {
     return `<div class="card"><h2>主项 1RM（第 ${cycle + 1} 轮）</h2>
       <div class="kv"><span>杠铃卧推 1RM</span><b>${fmtW(roundTo(pplMax(state, cycle, 'bench'), 0.5))}kg</b></div>
@@ -48,8 +61,7 @@ function programCardHtml(cycle) {
       <table class="tm"><tr><th>循环</th><th>主项</th><th>卧推</th><th>深蹲</th></tr>
       ${PPL_CYCLES.map((c, i) => `<tr><td>${'一二三四五六'[i]}</td><td>${c.main[0]}×${c.main[1]} @${c.main[2]}%</td><td>${fmtW(roundTo(pplMax(state, cycle, 'bench') * c.main[2] / 100, state.plateInc || 2.5))}</td><td>${fmtW(roundTo(pplMax(state, cycle, 'squat') * c.main[2] / 100, state.plateInc || 2.5))}</td></tr>`).join('')}</table>
       <p class="muted">推 → 拉 → 腿 → 休，四天一循环。辅助动作 3 组 × 8–12 次（RPE 8），第六个循环减载。练完 6 个循环，下一轮卧推 +2.5kg、深蹲 +5kg。</p>
-      <label class="row check shift-opt"><input type="checkbox" data-autoshift ${autoShift() ? 'checked' : ''}>
-        <span><b>自动顺延未完成的训练</b><span class="muted small">前一天没练也没关系，后面的安排会自动往后顺延一位；推、拉、腿都练完才进入下一个循环。</span></span></label>
+      ${shiftOptHtml('推、拉、腿都练完才进入下一个循环。')}
       <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改 1RM</button>
         ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">这个循环没练完，整体顺延</button>
         <button class="btn small ghost" data-act="advance">往前调一个循环</button>`}</div></div>`;
@@ -93,7 +105,7 @@ function renderChallenge() {
         <div class="ring-txt"><b>${weeksDone}</b><small>/${P.weeks} ${unitOf()}</small></div></div></div>
       <div class="grow"><div class="muted">第 ${cycle + 1} 轮</div><h2>${esc(P.name)}</h2>
         <div class="muted">${pos ? `当前第 ${pos.week} ${unitOf()} · ${esc(weekName(pos.week))}` : `${fmtDate(parseKey(state.startDate))} 开始`}</div>
-        <div class="muted">${isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
+        <div class="muted">${isIan() ? '胸 → 腿 → 肩 → 背 · 5/3/1 + 双进阶' : isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
     ${programCardHtml(cycle)}`;
   for (let w = 0; w < P.weeks; w++) {
     const weekAbs = cycle * P.weeks + w;

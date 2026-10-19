@@ -115,7 +115,7 @@ function renderHome() {
   $('#view-home').innerHTML = html;
 }
 
-const DAY_EN = { press: 'PRESS DAY', deadlift: 'DEADLIFT DAY', bench: 'BENCH DAY', squat: 'SQUAT DAY', mike1: 'PUSH DAY · 1', mike2: 'PUSH DAY · 2', mikeTest: 'TEST DAY', pplPush: 'PUSH DAY', pplPull: 'PULL DAY', pplLegs: 'LEG DAY' };
+const DAY_EN = { press: 'PRESS DAY', deadlift: 'DEADLIFT DAY', bench: 'BENCH DAY', squat: 'SQUAT DAY', mike1: 'PUSH DAY · 1', mike2: 'PUSH DAY · 2', mikeTest: 'TEST DAY', pplPush: 'PUSH DAY', pplPull: 'PULL DAY', pplLegs: 'LEG DAY', ianChest: 'CHEST DAY', ianLegs: 'LEG DAY', ianShoulder: 'SHOULDER DAY', ianBack: 'BACK DAY' };
 function homeToday(t) {
   if (!t.pos) {
     return `<div class="card hero"><div class="muted">计划还没开始</div><h2>${fmtDate(parseKey(state.startDate))}开始第 1 ${unitOf()}</h2>
@@ -389,6 +389,7 @@ function blockHtml(s, b, log, sid, open) {
   const plan = b.tpl && b.rows ? `跟随主项强度 · 1RM ≈ ${fmtW(b.oneRM)}kg` : b.rows ? '' : `计划 ${b.w ? `${fmtW(b.w)}kg × ` : ''}${esc(b.reps)}${/[秒米]/.test(b.reps) ? '' : ' 次'} × ${b.sets} 组`;
   html += `<div class="blk-tools"><button class="rest-chip" data-restcfg="${b.key}">⏱ 休息 ${fmtRest(restFor(b))}</button>
     ${b.ex && b.slot && !b.extra && !b.tpl ? `<button class="rest-chip alt" data-swap="${b.key}" data-slot="${b.slot}">⇄ 换一个</button>` : ''}
+    ${b.ianSlot ? `<button class="rest-chip alt" data-ianswap="${b.key}">⇄ 换一个</button>` : ''}
     <span class="muted small grow right">${plan}</span></div>`;
   if (img || (b.ex && b.ex.cue) || b.note) {
     html += `<details class="wb-how"${b.note && !img ? ' open' : ''}><summary>动作要领</summary>
@@ -512,6 +513,29 @@ function addExtra(it) {
   snapshot(t.date, t.log); save();
   toast(`已加入今天的训练：${it.name}`);
 }
+/* Ian 力量举: remember what was done on an accessory (state.accLog[id] = { last, prev }) so the next session can be planned. */
+function recordAcc(key, log, sid, b) {
+  const ticks = log.sets[`${sid}:${b.key}`] || [];
+  const rows = blockRows(state, log, sid, b).filter((r, i) => ticks[i] && r.t !== 'warm');
+  const a = state.accLog = state.accLog || {};
+  const cur = a[b.ex.id] || {};
+  const rec = rows.length ? { date: key, w: Math.max(...rows.map((r) => Number(r.w) || 0)), reps: rows.map((r) => Number(r.r) || 0) } : null;
+  if (cur.last && cur.last.date === key) { if (rec) cur.last = rec; else { cur.last = cur.prev; delete cur.prev; } }
+  else if (rec) { cur.prev = cur.last; cur.last = rec; }
+  a[b.ex.id] = cur;
+}
+function openIanSwap(b) {
+  if (!b || !b.ianSlot) return;
+  const t = todayInfo();
+  const { sid, key, alt } = b.ianSlot;
+  const slot = IAN_DAYS[sid].slots.find((x) => x.key === key);
+  const { list } = ianSlotOptions(slot, t.pos.weekAbs);
+  openSheet(`换一个 · ${slot.label}`, `<p class="muted small">选好后以后每次练${SESSION_LABEL[sid]}都默认用这个动作，加重进度每个动作分开记。</p>
+    ${list.map(([name, img]) => `<button class="pick-row${b.ex.name === name ? ' on' : ''}" data-ianpick="${esc(name)}">
+      <span class="ex-thumb photo"><img src="${exImgUrl(img)}" alt="" loading="lazy"></span><b class="grow">${esc(name)}</b>${b.ex.name === name ? '<span class="tag">当前</span>' : ''}</button>`).join('')}`,
+    { type: 'ianswap', sid, key, alt, bkey: b.key });
+}
+
 function openRestPicker(bkey) {
   const t = todayInfo();
   const b = sessionWithExtras(state, t.date, wkSid(t), t.log).blocks.find((x) => x.key === bkey);
@@ -637,8 +661,9 @@ function bindWorkout() {
       const k = `${sid}:${ds.tick}`;
       log.sets[k] = log.sets[k] || [];
       log.sets[k][ds.i] = !log.sets[k][ds.i];
+      const bb = blk(ds.tick);
+      if (bb && bb.ianSlot && !bb.deload) recordAcc(t.key, log, sid, bb);
       if (log.sets[k][ds.i]) {
-        const bb = blk(ds.tick);
         const r = bb && blockRows(state, log, sid, bb)[ds.i];
         if (bb && bb.ex && r && r.w && !bb.deload) state.lastW[bb.ex.id] = { w: Number(r.w), r: Number(r.r) || 0 };
         startRest(Number(ds.rest) || 90);
@@ -672,6 +697,7 @@ function bindWorkout() {
       delete log.sx[`${sid}:${ds.tploff}`]; delete log.sets[`${sid}:${ds.tploff}`];
       toast('今天不练这个动作，模板里仍然保留');
     } else if (ds.restcfg) return openRestPicker(ds.restcfg);
+    else if (ds.ianswap) return openIanSwap(blk(ds.ianswap));
     else if (ds.exhist) {
       const bb = blk(ds.exhist);
       if (!bb) return;
@@ -706,6 +732,7 @@ function bindWorkout() {
         return;
       }
       editRows(t.log, sid, b)[ds.i][ds.sw ? 'w' : 'r'] = v;
+      if (b.ianSlot && !b.deload) recordAcc(t.key, t.log, sid, b);
       snapshot(t.date, t.log); save();
       if (sid === 'free') updateFreeStats();
     } else if (el.dataset.test) {
@@ -734,6 +761,13 @@ function bindWorkout() {
         delete t.log.sx[`${t.sid}:${sheetCtx.key}`]; delete t.log.sets[`${t.sid}:${sheetCtx.key}`];
         snapshot(t.date, t.log); save(); closeSheet(); render(); toast('已恢复推荐动作');
       }
+    } else if (sheetCtx.type === 'ianswap' && ds.ianpick) {
+      const t = todayInfo();
+      const sid = wkSid(t);
+      state.ianPick = { ...(state.ianPick || {}), [ianPickKey(sheetCtx.sid, sheetCtx.key, sheetCtx.alt)]: ds.ianpick };
+      delete t.log.sx[`${sid}:${sheetCtx.bkey}`]; delete t.log.sets[`${sid}:${sheetCtx.bkey}`];
+      snapshot(t.date, t.log); save(); closeSheet(); render();
+      toast(`已换成 ${ds.ianpick}`);
     } else if (sheetCtx.type === 'rest' && ds.reststep) {
       const cur = state.restPref[sheetCtx.rk] || sheetCtx.cur;
       const next = Math.min(600, Math.max(15, cur + Number(ds.reststep)));

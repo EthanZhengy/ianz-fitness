@@ -5,7 +5,7 @@ const LIFTS = ['press', 'deadlift', 'bench', 'squat'];
 const LIFT_NAMES = { press: '推举', deadlift: '硬拉', bench: '卧推', squat: '深蹲' };
 // TM increment applied at the start of week 5 and week 9 (and each new cycle).
 const TM_INC = { press: 2.5, bench: 2.5, deadlift: 5, squat: 5 };
-const LOWER = { deadlift: true, squat: true, pplLegs: true };
+const LOWER = { deadlift: true, squat: true, pplLegs: true, ianLegs: true, ianBack: true };
 
 /**
  * One training session per main lift, as in the program:
@@ -24,11 +24,17 @@ const SESSIONS = {
   pplPush: { main: 'bench', program: 'ppl' },
   pplPull: { program: 'ppl' },
   pplLegs: { main: 'squat', program: 'ppl' },
+  // Ian 力量举训练（5/3/1 + 四分化）
+  ianChest: { main: 'bench', program: 'ian' },
+  ianLegs: { main: 'squat', program: 'ian' },
+  ianShoulder: { program: 'ian' },
+  ianBack: { main: 'deadlift', program: 'ian' },
 };
 const SESSION_ORDER = ['press', 'deadlift', 'bench', 'squat'];
 const TEST_ORDER = ['deadlift', 'bench', 'squat', 'press']; // week 12; press test is optional
 const SESSION_LABEL = { press: '推举日', deadlift: '硬拉日', bench: '卧推日', squat: '深蹲日', mike1: '第一推（胸）', mike2: '第二推（手臂）', mikeTest: '卧推极限测试',
-  pplPush: '推（胸·肩·三头）', pplPull: '拉（背·二头）', pplLegs: '腿（腿·肩）' };
+  pplPush: '推（胸·肩·三头）', pplPull: '拉（背·二头）', pplLegs: '腿（腿·肩）',
+  ianChest: '胸日', ianLegs: '腿日', ianShoulder: '肩日', ianBack: '背日' };
 
 /**
  * Week definitions transcribed from the "3个月力量训练挑战计划".
@@ -75,11 +81,63 @@ const PROGRAMS = {
     defaultSchedule: [0, 3],
   },
   ppl: {
-    id: 'ppl', name: '三分化 5+1 计划（推·拉·腿）', short: '推拉腿', weeks: 6, days: 3, period: 4, unit: '循环',
+    id: 'ppl', name: '三分化 5+1 计划（推·拉·腿）', short: '推拉腿', weeks: 6, days: 3, period: 4, unit: '循环', flex: true,
     desc: '推 → 拉 → 腿 → 休，四天一循环，共 6 个循环：5 个循环逐步加重 + 1 个减载循环。卧推、深蹲按 1RM 百分比，辅助动作 3 组 × 8–12 次（RPE 8）。',
     defaultSchedule: [0, 1, 2],
   },
+  ian: {
+    id: 'ian', name: 'Ian 力量举训练（5/3/1 + 四分化）', short: 'Ian 力量举', weeks: 4, days: 4, period: 5, unit: '周', flex: true, restAfter: 0,
+    desc: '胸 → 腿 → 肩 → 背 四分化，练完才往下走。卧推、深蹲、硬拉按 5/3/1（带 + 组和 FSL 补量，第 4 周减载），辅助动作可替换，按双进阶自动规划下次的重量和次数。',
+    defaultSchedule: [0, 1, 2, 3],
+  },
 };
+
+/*
+ * Ian 力量举训练: 5/3/1 for bench / squat / deadlift inside a chest → legs → shoulders → back split.
+ * A "week" is one pass through the four days (not a calendar week). TM = 90% 1RM, +2.5kg bench / +5kg squat & deadlift per 4-week cycle.
+ * FSL = First Set Last: 3 × 5 at the first working set's weight (not in the deload week).
+ */
+const IAN_WEEKS = [
+  { name: '5 次组', sets: [[65, 5], [75, 5], [85, 5, true]], fsl: true },
+  { name: '3 次组', sets: [[70, 3], [80, 3], [90, 3, true]], fsl: true },
+  { name: '5/3/1 周', sets: [[75, 5], [85, 3], [95, 1, true]], fsl: true },
+  { name: '减载周', sets: [[40, 5], [50, 5], [60, 5]], fsl: false, deload: true },
+];
+/*
+ * Accessory slots per day. o: options [name, exercise id (photo), load kind]. The first option is the default;
+ * 换一个 picks another and the choice is remembered. lo–hi: double-progression rep range.
+ * Load kinds set the step when every set reaches hi reps: bb 2.5 · smith 2.5 · db 2 · cable 2.5 · machine 5 · press 10 · bw (+2.5kg added load).
+ */
+const IAN_DAYS = {
+  ianChest: { main: '杠铃卧推', mainImg: 'Barbell_Bench_Press_-_Medium_Grip', warmup: '热身：肩袖弹力带外旋 + 俯卧撑 1 组 + 空杆卧推逐步加重', slots: [
+    { key: 'upper', label: '上胸', cat: 'chest', sets: 3, lo: 8, hi: 12, rest: 120, o: [['史密斯上斜卧推', 'Smith_Machine_Incline_Bench_Press', 'smith'], ['上斜哑铃卧推', 'Incline_Dumbbell_Press', 'db'], ['器械上斜推胸', 'Leverage_Incline_Chest_Press', 'machine'], ['上斜杠铃卧推', 'Barbell_Incline_Bench_Press_-_Medium_Grip', 'bb']] },
+    { key: 'mid', label: '中胸', cat: 'chest', sets: 3, lo: 8, hi: 12, rest: 120, o: [['器械推胸', 'Machine_Bench_Press', 'machine'], ['哑铃卧推', 'Dumbbell_Bench_Press', 'db'], ['蝴蝶机夹胸', 'Butterfly', 'machine']] },
+    { key: 'lower', label: '下胸', cat: 'chest', sets: 3, lo: 8, hi: 12, rest: 120, o: [['双杠臂屈伸', 'Dips_-_Chest_Version', 'bw'], ['下斜杠铃卧推', 'Decline_Barbell_Bench_Press', 'bb'], ['下斜哑铃卧推', 'Decline_Dumbbell_Bench_Press', 'db']] },
+    { key: 'tri', label: '三头', cat: 'tri', sets: 3, lo: 10, hi: 15, rest: 90, o: [['直杆绳索下压', 'Triceps_Pushdown', 'cable'], ['绳索下压', 'Triceps_Pushdown_-_Rope_Attachment', 'cable'], ['绳索过头臂屈伸', 'Cable_Rope_Overhead_Triceps_Extension', 'cable'], ['仰卧臂屈伸', 'Lying_Triceps_Press', 'bb']] },
+  ] },
+  ianLegs: { main: '杠铃深蹲', mainImg: 'Barbell_Full_Squat', warmup: '热身：泡沫轴滚股四 + 开髋 + 脚踝活动度 + 空杆深蹲逐步加重', slots: [
+    { key: 'press', label: '腿举', cat: 'leg', sets: 3, lo: 10, hi: 15, rest: 120, o: [['倒蹬（腿举）', 'Leg_Press', 'press'], ['哈克深蹲', 'Hack_Squat', 'machine'], ['哑铃分腿蹲', 'Split_Squat_with_Dumbbells', 'db']] },
+    { key: 'curl', label: '腘绳肌', cat: 'leg', sets: 3, lo: 10, hi: 15, rest: 90, o: [['俯卧腿弯举', 'Lying_Leg_Curls', 'machine'], ['坐姿腿弯举', 'Seated_Leg_Curl', 'machine'], ['罗马尼亚硬拉', 'Romanian_Deadlift', 'bb']] },
+    { key: 'arm', label: '手臂（二头 / 三头轮换）', sets: 3, lo: 10, hi: 15, rest: 90, alt: true,
+      o: [['杠铃弯举', 'Barbell_Curl', 'bb', 'bi'], ['锤式弯举', 'Hammer_Curls', 'db', 'bi'], ['牧师凳弯举', 'Preacher_Curl', 'bb', 'bi']],
+      o2: [['绳索下压', 'Triceps_Pushdown_-_Rope_Attachment', 'cable', 'tri'], ['绳索过头臂屈伸', 'Cable_Rope_Overhead_Triceps_Extension', 'cable', 'tri'], ['哑铃臂屈伸', 'Tricep_Dumbbell_Kickback', 'db', 'tri']] },
+    { key: 'calf', label: '小腿', cat: 'calf', sets: 3, lo: 12, hi: 20, rest: 60, o: [['坐姿提踵', 'Seated_Calf_Raise', 'machine'], ['站姿提踵', 'Standing_Calf_Raises', 'machine'], ['腿举机提踵', 'Calf_Press_On_The_Leg_Press_Machine', 'press']] },
+  ] },
+  ianShoulder: { warmup: '热身：肩袖弹力带外旋 / 内旋 + 弹力带拉开 + 轻重量侧平举 1 组', slots: [
+    { key: 'press', label: '上肩', cat: 'shoulder', sets: 3, lo: 8, hi: 12, rest: 120, o: [['史密斯推肩', 'Smith_Machine_Overhead_Shoulder_Press', 'smith'], ['坐姿哑铃推举', 'Seated_Dumbbell_Press', 'db'], ['器械推肩', 'Machine_Shoulder_Military_Press', 'machine']] },
+    { key: 'side1', label: '中束 ①', cat: 'shoulder', sets: 3, lo: 12, hi: 15, rest: 60, o: [['哑铃侧平举（飞鸟）', 'Side_Lateral_Raise', 'db'], ['坐姿哑铃侧平举', 'Seated_Side_Lateral_Raise', 'db']] },
+    { key: 'side2', label: '中束 ②', cat: 'shoulder', sets: 3, lo: 12, hi: 15, rest: 60, o: [['器械侧平举', 'Side_Lateral_Raise', 'machine'], ['坐姿哑铃侧平举', 'Seated_Side_Lateral_Raise', 'db']] },
+    { key: 'rear', label: '后束', cat: 'shoulder', sets: 3, lo: 12, hi: 15, rest: 60, o: [['龙门架绳索面拉', 'Face_Pull', 'cable'], ['反向蝴蝶机飞鸟', 'Reverse_Machine_Flyes', 'machine'], ['绳索后束飞鸟', 'Cable_Rear_Delt_Fly', 'cable']] },
+    { key: 'core', label: '核心', cat: 'core', sets: 3, lo: 10, hi: 15, rest: 60, o: [['悬垂举腿', 'Hanging_Leg_Raise', 'bw'], ['绳索卷腹', 'Cable_Crunch', 'cable'], ['健腹轮', 'Ab_Roller', 'bw']] },
+  ] },
+  ianBack: { main: '传统硬拉', mainImg: 'Barbell_Deadlift', warmup: '热身：猫牛式 + 臀桥 + 弹力带肩胛下压 + 空杆 / 轻重量硬拉逐步加重', slots: [
+    { key: 'pull', label: '下拉', cat: 'back', sets: 3, lo: 8, hi: 12, rest: 120, o: [['悍马机高位下拉', 'Wide-Grip_Lat_Pulldown', 'machine'], ['绳索高位下拉', 'Wide-Grip_Lat_Pulldown', 'cable'], ['对握高位下拉', 'Close-Grip_Front_Lat_Pulldown', 'cable'], ['直臂下压', 'Straight-Arm_Pulldown', 'cable']] },
+    { key: 'row', label: '划船', cat: 'back', sets: 3, lo: 8, hi: 12, rest: 120, o: [['器械划船', 'Leverage_Iso_Row', 'machine'], ['V 把坐姿划船', 'Seated_Cable_Rows', 'cable'], ['悍马机划船', 'Leverage_High_Row', 'machine'], ['杠铃划船', 'Bent_Over_Barbell_Row', 'bb']] },
+    { key: 'bi', label: '二头', cat: 'bi', sets: 3, lo: 10, hi: 15, rest: 90, o: [['杠铃弯举', 'Barbell_Curl', 'bb'], ['哑铃弯举', 'Dumbbell_Bicep_Curl', 'db'], ['锤式弯举', 'Hammer_Curls', 'db'], ['牧师凳弯举', 'Preacher_Curl', 'bb']] },
+    { key: 'face', label: '后束（肩部保护）', cat: 'shoulder', sets: 2, lo: 15, hi: 20, rest: 60, o: [['龙门架绳索面拉', 'Face_Pull', 'cable'], ['绳索后束飞鸟', 'Cable_Rear_Delt_Fly', 'cable']] },
+  ] },
+};
+const IAN_INC = { bb: 2.5, smith: 2.5, db: 2, cable: 2.5, machine: 5, press: 10, bw: 2.5 };
 
 /*
  * 三分化周期训练（推·拉·腿｜四天一循环 5+1 精炼版）, transcribed from the plan spreadsheet.
@@ -327,5 +385,5 @@ const DAY_FIT = {
 
 if (typeof module !== 'undefined') {
   module.exports = { LIFTS, LIFT_NAMES, TM_INC, LOWER, SESSIONS, SESSION_ORDER, TEST_ORDER, SESSION_LABEL,
-    WEEKS, EQUIPMENT, INJURIES, VARIANTS, EXERCISES, SLOT_NAMES, DAY_FIT, LIB_CATS, MUSCLE_CAT, LIFT_CAT, EQ_FILTERS, primaryEq, EX_IMG, exImgUrl, FOODS, PROGRAMS, MIKE_WEEKS, PPL_CYCLES, PPL_DAYS, MIKE_WARMUP, MIKE_VARIANTS };
+    WEEKS, EQUIPMENT, INJURIES, VARIANTS, EXERCISES, SLOT_NAMES, DAY_FIT, LIB_CATS, MUSCLE_CAT, LIFT_CAT, EQ_FILTERS, primaryEq, EX_IMG, exImgUrl, FOODS, PROGRAMS, MIKE_WEEKS, PPL_CYCLES, PPL_DAYS, IAN_WEEKS, IAN_DAYS, IAN_INC, MIKE_WARMUP, MIKE_VARIANTS };
 }

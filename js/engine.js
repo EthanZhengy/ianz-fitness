@@ -47,7 +47,8 @@ const cur = (st) => st || (typeof state !== 'undefined' ? state : null);
 const progOf = (st) => PROGRAMS[(cur(st) && cur(st).program) || '531'] || PROGRAMS['531'];
 const isMike = (st) => progOf(st).id === 'mike';
 const isPPL = (st) => progOf(st).id === 'ppl';
-const programOfSession = (sid) => (String(sid).startsWith('mike') ? 'mike' : String(sid).startsWith('ppl') ? 'ppl' : '531');
+const isIan = (st) => progOf(st).id === 'ian';
+const programOfSession = (sid) => (String(sid).startsWith('mike') ? 'mike' : String(sid).startsWith('ppl') ? 'ppl' : String(sid).startsWith('ian') ? 'ian' : '531');
 /** Days in one program "week": 7 for weekly plans, 4 for the 推/拉/腿/休 cycle. */
 const periodOf = (st) => progOf(st).period || 7;
 /** What a program period is called: 周 or 循环. */
@@ -62,10 +63,11 @@ function slotOf(st, date) {
  * 自动顺延 (推拉腿): a cycle only moves on once its push, pull and legs are all done (then one rest day),
  * so a missed day shifts everything after it by one. st.cycleBreaks = days where the user skipped ahead.
  */
-const autoShift = (st) => isPPL(st) && cur(st).autoShift !== false;
+const autoShift = (st) => !!progOf(st).flex && cur(st).autoShift !== false;
 function shiftCycles(st) {
   st = cur(st);
-  const order = ['pplPush', 'pplPull', 'pplLegs'];
+  const order = orderFor(1, st);
+  const restAfter = progOf(st).restAfter ?? 1;
   const ev = [];
   Object.keys(st.logs || {}).forEach((k) => {
     const l = st.logs[k];
@@ -89,8 +91,8 @@ function shiftCycles(st) {
     }
     if (!c.done.includes(sid)) c.done.push(sid);
     if (order.every((x) => c.done.includes(x))) {
-      c.end = addDays(d, 1); // one rest day after the cycle
-      cycles.push(c); c = { start: addDays(d, 2), end: null, done: [] };
+      c.end = addDays(d, restAfter); // rest day(s) after the cycle (推拉腿: 1, Ian: 0)
+      cycles.push(c); c = { start: addDays(d, restAfter + 1), end: null, done: [] };
     }
   });
   cycles.push(c);
@@ -109,18 +111,20 @@ function cycleRange(st, weekAbs) {
   return { start, end: addDays(start, P - 1) };
 }
 const slotName = (st, date) => (periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `循环第 ${slotOf(st, date) + 1} 天`);
-const isTestWeek = (week, st) => week === progOf(st).weeks;
+const isTestWeek = (week, st) => ['531', 'mike'].includes(progOf(st).id) && week === progOf(st).weeks;
 function orderFor(week, st) {
   if (isPPL(st)) return ['pplPush', 'pplPull', 'pplLegs'];
+  if (isIan(st)) return ['ianChest', 'ianLegs', 'ianShoulder', 'ianBack'];
   if (isMike(st)) return isTestWeek(week, st) ? ['mikeTest'] : ['mike1', 'mike2'];
   return week === 12 ? TEST_ORDER : SESSION_ORDER;
 }
 function requiredFor(week, st) {
   if (isPPL(st)) return 3;
+  if (isIan(st)) return 4;
   if (isMike(st)) return isTestWeek(week, st) ? 1 : 2;
   return week === 12 ? 3 : 4; // press test in week 12 is optional
 }
-const weekName = (week, st) => (isPPL(st) ? PPL_CYCLES : isMike(st) ? MIKE_WEEKS : WEEKS)[week - 1].name;
+const weekName = (week, st) => (isIan(st) ? IAN_WEEKS : isPPL(st) ? PPL_CYCLES : isMike(st) ? MIKE_WEEKS : WEEKS)[week - 1].name;
 /** The state as seen by another program (its own start date, schedule and tests), for history across programs. */
 function asProgram(st, prog) {
   if ((st.program || '531') === prog) return st;
@@ -187,7 +191,7 @@ function recommend(st, date) {
   }
   if (pos.shift) {
     const i = order.indexOf(required[0]);
-    return { session: required[0], reason: `第 ${pos.week} 循环第 ${i + 1} 练：${SESSION_LABEL[required[0]]}${i > 0 && !doneOn(st, addDays(date, -1)) ? '（前面没练的已自动往后顺延）' : ''}` };
+    return { session: required[0], reason: `第 ${pos.week} ${unitOf(st)}第 ${i + 1} 练：${SESSION_LABEL[required[0]]}${i > 0 && !doneOn(st, addDays(date, -1)) ? '（前面没练的已自动往后顺延）' : ''}` };
   }
   const yesterday = doneOn(st, addDays(date, -1));
   const clash = (s) => yesterday && isLower(yesterday) && isLower(s);
@@ -322,6 +326,7 @@ function buildSession(st, date, sessionId, opts = {}) {
   if (!pos || !SESSIONS[sessionId]) return null;
   if (isMike(st)) return programOfSession(sessionId) === 'mike' ? buildMike(st, date, pos, sessionId, opts) : null;
   if (isPPL(st)) return programOfSession(sessionId) === 'ppl' ? buildPPL(st, date, pos, sessionId, opts) : null;
+  if (isIan(st)) return programOfSession(sessionId) === 'ian' ? buildIan(st, date, pos, sessionId, opts) : null;
   if (programOfSession(sessionId) !== '531') return null;
   const W = WEEKS[pos.week - 1];
   const r = opts.readiness || 'normal';
@@ -421,6 +426,106 @@ function mikeMax(st, cycle, which) {
   const bench = tested || prevBench;
   if (which === 'bench') return bench;
   return Math.round(mikeMax(st, cycle - 1, 'cg') * (prevBench ? bench / prevBench : 1) * 100) / 100;
+}
+
+/* ---------- Ian 力量举训练 ---------- */
+const IAN_TM_INC = { bench: 2.5, squat: 5, deadlift: 5 };
+/** Training max for a 4-week cycle: 90% of the entered 1RM, +2.5kg (bench) / +5kg (squat, deadlift) per finished cycle. */
+function ianTM(st, cycle, lift) {
+  return 0.9 * ((st.lifts[lift] && st.lifts[lift].oneRM) || 0) + Math.max(0, cycle) * IAN_TM_INC[lift];
+}
+/** The accessory record used to plan `date`: the last session before that day (state.accLog[id] = { last, prev }). */
+function accRecord(st, id, date) {
+  const a = st.accLog && st.accLog[id];
+  const key = dateKey(date);
+  if (a) { const r = a.last && a.last.date < key ? a.last : a.prev && a.prev.date < key ? a.prev : null; if (r) return r; }
+  const l = st.lastW && st.lastW[id];
+  return l && l.w ? { w: l.w, reps: [l.r] } : null;
+}
+/**
+ * Double progression: stay at a weight and add reps until every set reaches the top of the range, then add one step
+ * and drop back to the bottom. Far below the range → take 10% off. Deload week: one set less, 20% lighter, not recorded.
+ */
+function accPlan(st, id, slot, kind, date, deload) {
+  const { lo, hi } = slot;
+  let sets = slot.sets;
+  const step = IAN_INC[kind] || 2.5;
+  const inc = st.plateInc || 2.5;
+  const rec = accRecord(st, id, date);
+  let w = null, reps = Array(sets).fill(lo), note;
+  if (!rec) note = `第一次做：选一个能标准完成 ${lo}–${hi} 次的重量，App 会记住`;
+  else {
+    const done = rec.reps.filter((r) => r > 0);
+    const w0 = rec.w || 0;
+    const top = done.length >= sets && done.every((r) => r >= hi);
+    const min = done.length ? Math.min(...done) : lo;
+    if (top) {
+      w = w0 ? w0 + step : 0;
+      note = w0 ? `上次 ${fmtW(w0)}kg 每组都做到 ${hi} 次 ✅ 今天加到 ${fmtW(w)}kg，从 ${lo} 次开始` : `上次每组都做到 ${hi} 次 ✅ 今天加 ${fmtW(step)}kg 负重，从 ${lo} 次开始`;
+      if (!w0) w = step;
+    } else if (w0 && min < lo - 2) {
+      w = roundTo(w0 * 0.9, kind === 'db' ? 1 : inc);
+      note = `上次 ${fmtW(w0)}kg 只做到 ${min} 次，今天减到 ${fmtW(w)}kg，先把动作做标准`;
+    } else {
+      w = w0 || null;
+      reps = Array.from({ length: sets }, (_, i) => Math.min(hi, Math.max(lo, (done[i] ?? done[done.length - 1] ?? lo) + 1)));
+      note = `上次 ${w0 ? `${fmtW(w0)}kg × ` : ''}${done.join(' / ') || '—'} 次 → 今天${w0 ? '同样重量，' : ''}每组争取多 1 次（做到每组 ${hi} 次就加重）`;
+    }
+  }
+  if (deload) {
+    sets = Math.max(2, sets - 1);
+    reps = Array(sets).fill(lo);
+    if (w) w = roundTo(w * 0.8, kind === 'db' ? 1 : inc);
+    note = '减载周：少一组、重量轻 20%，这次不计入加重';
+  }
+  return { sets, rows: Array.from({ length: sets }, (_, i) => ({ w, reps: reps[i] ?? lo })), note };
+}
+const ianPickKey = (sid, key, alt) => `${sid}:${key}${alt ? ':b' : ''}`;
+/** The options a slot offers today (the leg-day arm slot alternates biceps / triceps each week). */
+function ianSlotOptions(slot, weekAbs) {
+  const alt = slot.alt && weekAbs % 2 === 1;
+  return { list: alt ? slot.o2 : slot.o, alt };
+}
+function buildIan(st, date, pos, sid, opts = {}) {
+  const W = IAN_WEEKS[pos.week - 1];
+  const D = IAN_DAYS[sid];
+  const r = opts.readiness || 'normal';
+  const inc = st.plateInc || 2.5;
+  const notes = [D.warmup];
+  const blocks = [];
+  const lift = SESSIONS[sid].main;
+  if (lift) {
+    const tm = ianTM(st, pos.cycle, lift);
+    const v = variantOf(st, lift);
+    const rows = W.sets.map(([pct, reps, plus]) => ({ pct, reps, w: roundTo(tm * pct / 100, incOf(st, v)), plus: !!plus && r !== 'tired' }));
+    if (W.fsl && r !== 'tired' && r !== 'short') rows.push(...Array.from({ length: 3 }, () => ({ pct: W.sets[0][0], reps: 5, w: rows[0].w, label: 'FSL' })));
+    blocks.push({ key: 'main', type: 'main', title: `5/3/1 · ${v.name}`, sub: `TM ${fmtW(roundTo(tm, 0.5))}kg`, lift, img: EX_IMG[v.id] || D.mainImg, rows, rest: 180,
+      note: W.deload ? '减载周：三组轻重量，保持动作，不做 + 组' : `最后一组带「+」：在动作标准的前提下尽量多做，填上实际次数${W.fsl ? '；FSL：用第一组的重量再做 3 组 × 5 次' : ''}` });
+  }
+  IAN_DAYS[sid].slots.forEach((slot) => {
+    const { list, alt } = ianSlotOptions(slot, pos.weekAbs);
+    const pickName = st.ianPick && st.ianPick[ianPickKey(sid, slot.key, alt)];
+    const o = list.find((x) => x[0] === pickName) || list[0];
+    const [name, img, kind, cat] = o;
+    const id = `ian_${img}_${kind}_${slot.lo}-${slot.hi}`; // same exercise in another rep range keeps its own progress
+    const db = typeof EXDB !== 'undefined' && EXDB.find((e) => e.id === img);
+    const plan = accPlan(st, id, slot, kind, date, !!W.deload);
+    blocks.push({
+      key: slot.key, type: 'sets', title: `${slot.label} · ${name}`, cat: cat || slot.cat,
+      ex: { id, name, img, cue: db && db.s ? db.s[0] : '' }, sets: plan.sets, reps: `${slot.lo}-${slot.hi}`,
+      rows: plan.rows, note: plan.note, rest: slot.rest, deload: !!W.deload, ianSlot: { key: slot.key, alt, sid },
+    });
+  });
+  notes.push(W.deload ? '减载周：主项和辅助都轻，目的是恢复，下个周期 TM 自动加重' : '辅助动作按 App 规划的重量和次数做；每组都做到范围上限，下次自动加重');
+  let out = blocks;
+  if (r === 'tired') {
+    out = blocks.map((b) => (b.type === 'sets' ? { ...b, rows: b.rows.slice(0, Math.max(2, b.rows.length - 1)), sets: Math.max(2, b.sets - 1) } : b));
+    notes.push('疲劳模式：不做 + 组和 FSL，辅助各减 1 组');
+  } else if (r === 'short') {
+    out = blocks.filter((b, i) => b.type === 'main' || i <= (lift ? 2 : 1));
+    notes.push('时间紧：不做 FSL，只做主项和前两个辅助动作');
+  } else if (r === 'great') notes.push('状态好：+ 组可以多拼几次，但别牺牲动作');
+  return { pos, week: W, sessionId: sid, kind: LOWER[sid] ? 'lower' : 'upper', notes, blocks: out };
 }
 
 /* ---------- 三分化 5+1（推 / 拉 / 腿） ---------- */
@@ -623,5 +728,5 @@ if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
     position, recommend, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
-    progOf, isMike, isPPL, autoShift, shiftCycles, cycleRange, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
+    progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike };
 }

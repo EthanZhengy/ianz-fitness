@@ -80,7 +80,9 @@ function installHtml() {
     ${shortcutsGuideHtml()}`;
 }
 function trainingSettingsHtml() {
-  const maxes = isPPL()
+  const maxes = isIan()
+    ? `<div class="kv"><span>卧推 / 深蹲 / 硬拉 1RM</span><b>${['bench', 'squat', 'deadlift'].map((l) => fmtW(state.lifts[l].oneRM)).join(' / ')}kg</b></div>`
+    : isPPL()
     ? `<div class="kv"><span>卧推 / 深蹲 1RM</span><b>${fmtW(pplMax(state, 0, 'bench'))} / ${fmtW(pplMax(state, 0, 'squat'))}kg</b></div>`
     : isMike()
     ? `<div class="kv"><span>卧推 / 窄推 1RM</span><b>${fmtW(state.mike.bench1RM)} / ${fmtW(roundTo(mikeMax(state, 0, 'cg'), 0.5))}kg</b></div>
@@ -90,7 +92,7 @@ function trainingSettingsHtml() {
   return `<div class="card">
       <div class="kv"><span>训练计划</span><b>${esc(progOf().name)}</b></div>
       ${maxes}
-      <div class="kv"><span>训练日</span><b>${isPPL() ? '推 → 拉 → 腿 → 休 循环' : state.schedule.map((d) => WEEKDAYS[d]).join('、')} ${esc(state.trainTime)}</b></div>
+      <div class="kv"><span>训练日</span><b>${isIan() ? '胸 → 腿 → 肩 → 背 轮换' : isPPL() ? '推 → 拉 → 腿 → 休 循环' : state.schedule.map((d) => WEEKDAYS[d]).join('、')} ${esc(state.trainTime)}</b></div>
       <div class="kv"><span>伤病</span><b>${state.injuries.map((i) => INJURIES[i]).join('、') || '无'}</b></div>
       <div class="kv"><span>器械</span><b>${state.equipment.length} 种</b></div>
       <div class="kv"><span>喜欢的动作</span><b>${state.favorites.map((id) => exById(state, id)?.name).filter(Boolean).map(esc).join('、') || '未设置'}</b></div>

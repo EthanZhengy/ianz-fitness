@@ -143,7 +143,7 @@ function statsTabHtml() {
   </div>`;
 
   // Strength curve (推拉腿 only has bench and squat main lifts)
-  const chartLifts = isPPL() ? ['bench', 'squat'] : LIFTS;
+  const chartLifts = isPPL() ? ['bench', 'squat'] : isIan() ? ['bench', 'squat', 'deadlift'] : LIFTS;
   if (!chartLifts.includes(statsLift)) statsLift = chartLifts[0];
   const tm = tmSeries(state, statsLift, today);
   const e1 = e1rmSeries(hist, statsLift);
