@@ -319,7 +319,7 @@ function setRowHtml(b, rows, r, i, done, key) {
     <span class="x">×</span>
     <label class="fld"><input type="number" inputmode="numeric" min="0" data-sr="${b.key}" data-i="${i}" value="${r.plus && !am ? '' : r.r ?? ''}" placeholder="${r.plus ? `${r.planR}+` : ''}"><span>${repUnit(b)}</span></label>
     <span class="meta">${esc(meta)}</span>
-    <button class="tick" data-tick="${b.key}" data-i="${i}" data-rest="${restFor(b)}" aria-label="完成第 ${i + 1} 组">✓</button>
+    <button class="tick" data-tick="${b.key}" data-i="${i}" data-rest="${r.t === 'warm' ? WARM_REST : restFor(b)}" aria-label="完成第 ${i + 1} 组">✓</button>
   </div>${am ? `<div class="muted e1rm">估算 1RM ≈ ${fmtW(Math.round(epley(Number(r.w) || 0, Number(r.r)) * 2) / 2)}kg</div>` : ''}`;
 }
 
@@ -547,11 +547,13 @@ function openRestPicker(bkey) {
     <p class="muted">每次完成一组后自动开始倒计时。这个动作以后都会用这个休息时间。</p>`, { type: 'rest', rk: restKey(b), cur });
 }
 
-/* Rest timer shown after ticking a set */
+/* Rest timer shown after ticking a set. Warm-up sets always rest 90s; adjusting the timer after a working set
+   (−30s / +30s) becomes that exercise's rest time from then on (state.restPref), until it is changed again. */
+const WARM_REST = 90;
 let restTimer = null;
-function startRest(sec) {
+function startRest(sec, opts = {}) {
   clearInterval(restTimer && restTimer.iv);
-  restTimer = { end: Date.now() + sec * 1000, total: sec };
+  restTimer = { end: Date.now() + sec * 1000, total: sec, rk: opts.rk || null, warm: !!opts.warm, name: opts.name || '' };
   restTimer.iv = setInterval(drawRest, 250);
   drawRest();
 }
@@ -666,7 +668,7 @@ function bindWorkout() {
       if (log.sets[k][ds.i]) {
         const r = bb && blockRows(state, log, sid, bb)[ds.i];
         if (bb && bb.ex && r && r.w && !bb.deload) state.lastW[bb.ex.id] = { w: Number(r.w), r: Number(r.r) || 0 };
-        startRest(Number(ds.rest) || 90);
+        startRest(Number(ds.rest) || 90, { rk: bb ? restKey(bb) : null, warm: !!(r && r.t === 'warm'), name: bb ? bb.title.replace(/^.*· /, '') : '' });
         // last set of this exercise: open the next unfinished one
         if (bb && blockProgress(log, sid, bb).full) wkOpen = undefined;
         if (sid === 'free' && !freeLog(log).startedAt && !freeLog(log).done) freeLog(log).startedAt = Date.now();
@@ -798,6 +800,14 @@ function bindWorkout() {
       const sec = Number(b.dataset.restAdd);
       restTimer.end += sec * 1000;
       restTimer.total = Math.max(1, restTimer.total + sec);
+      if (restTimer.rk && !restTimer.warm) {
+        // remember it for this exercise
+        const pref = Math.min(600, Math.max(15, restTimer.total));
+        state.restPref = { ...(state.restPref || {}), [restTimer.rk]: pref };
+        save();
+        if (currentView === 'workout') { const keep = restMode; render(); restMode = keep; }
+        toast(`⏱ 已记住：${restTimer.name || '这个动作'}以后休息 ${fmtRest(pref)}`);
+      }
       if (restTimer.end <= Date.now()) { stopRest(); return toast('⏰ 休息结束，开始下一组'); }
       drawRest();
     }
