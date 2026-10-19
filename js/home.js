@@ -292,7 +292,8 @@ function renderWorkout() {
   const w = workoutStats(s, t.log, t.sid);
   $('#view-workout').innerHTML = `<div class="wk-head"><button class="icon-round" data-act="back" aria-label="返回">${ICONS.back}</button>
       <div class="grow"><b>${sessionName(t.sid, t.pos.week)}</b><div class="muted">第 ${t.pos.week} ${unitOf()} · ${esc(weekName(t.pos.week))} · ${READINESS[t.log.readiness || 'normal'].label}</div></div>
-      <div class="wk-stats"><span><b>${w.done}</b>/${w.sets} 组</span><span><b>${w.exDone}</b>/${w.ex} 动作</span><span><b>${fmtKg(w.volDone)}</b>/${fmtKg(w.vol)} 容量</span></div></div>
+      <div class="wk-stats"><span><b>${w.done}</b>/${w.sets} 组</span><span><b>${w.exDone}</b>/${w.ex} 动作</span><span><b>${fmtKg(w.volDone)}</b>/${fmtKg(w.vol)} 容量</span></div>
+      ${doneToday ? '' : '<button class="btn small wk-finish" data-act="done">完成</button>'}</div>
     ${workoutHtml(s, t.log, t.sid, doneToday)}`;
 }
 
@@ -606,6 +607,28 @@ function bindRestDrag() {
   bindBubbleDrag(el, 'ianz-rest-pos', () => restMode === 'mini', () => applyRestPos(el));
 }
 
+/* ---------- finishing: the 完成 button any time, and a prompt once every set is ticked ---------- */
+function finishPlanWorkout(t) {
+  const log = t.log;
+  log.session = t.sid; log.done = true; log.offline = false;
+  stopRest();
+  toast(`💪 ${doneLine()}`);
+  snapshot(t.date, log);
+  save(); render();
+}
+function askDoneIfComplete(t, sid) {
+  const done = sid === 'free' ? freeLog(t.log).done : t.log.done && t.log.session === sid;
+  if (done) return;
+  const s = sessionWithExtras(state, t.date, sid, t.log);
+  const w = s && workoutStats(s, t.log, sid);
+  if (!w || !w.sets || w.done < w.sets) return;
+  stopRest();
+  openSheet('全部练完了 🎉', `<p class="center">${w.ex} 个动作、${w.sets} 组都完成了，训练量 ${fmtKg(w.volDone)}kg。</p>
+    <p class="muted center">现在完成今天的训练吗？之后也可以随时点右上角的「完成」。</p>
+    <button class="btn block big" data-wkdone="yes">✅ 完成今天的训练</button>
+    <button class="btn block ghost" data-wkdone="no">再练一会儿</button>`, { type: 'wkdone' });
+}
+
 /* ---------- leaving the workout: 返回 button, edge swipe, Android back; a bubble brings you back ---------- */
 let wkLeft = ''; // date key of the workout left with 返回 (in memory: the bubble also shows for one that has ticked sets)
 /** The unfinished workout of today, or null: { mode: 'plan' | 'free', done, sets }. */
@@ -819,13 +842,23 @@ function bindWorkout() {
     else if (ds.act === 'add-extra') return openPicker();
     else if (ds.swap) { swapQ = ''; return openSwap(ds.swap); }
     else if (ds.act === 'done') {
-      log.session = sid; log.done = true; log.offline = false;
-      stopRest();
-      toast(`💪 ${doneLine()}`);
+      const w = workoutStats(sessionWithExtras(state, t.date, sid, log), log, sid);
+      if (w.done < w.sets && !confirm(w.done ? `还有 ${w.sets - w.done} 组没打勾，确定完成今天的训练吗？` : '还没有完成任何一组，确定完成今天的训练吗？')) return;
+      return finishPlanWorkout(t);
     } else if (ds.act === 'undo-done') log.done = false;
     else return;
     snapshot(t.date, log);
     save(); render();
+    if (ds.tick && (log.sets[`${sid}:${ds.tick}`] || [])[ds.i]) askDoneIfComplete(t, sid);
+  });
+  $('#sheet').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-wkdone]');
+    if (!b || !sheetCtx || sheetCtx.type !== 'wkdone') return;
+    closeSheet();
+    if (b.dataset.wkdone !== 'yes') return;
+    const t = todayInfo();
+    if (wkSid(t) === 'free') return freeAction('finish', t);
+    finishPlanWorkout(t);
   });
   root.addEventListener('change', (e) => {
     const el = e.target;
