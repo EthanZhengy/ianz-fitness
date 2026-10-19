@@ -601,12 +601,69 @@ function drawRest() {
   if (mode === 'mini') el.querySelector('.val').style.strokeDashoffset = (REST_RING * (1 - frac)).toFixed(1);
   else el.querySelector('.rest-bar').style.width = `${frac * 100}%`;
 }
-/* Drag the bubble; it snaps to the nearest side and remembers where it was. */
 function bindRestDrag() {
   const el = $('#rest');
+  bindBubbleDrag(el, 'ianz-rest-pos', () => restMode === 'mini', () => applyRestPos(el));
+}
+
+/* ---------- leaving the workout: 返回 button, edge swipe, Android back; a bubble brings you back ---------- */
+let wkLeft = ''; // date key of the workout left with 返回 (in memory: the bubble also shows for one that has ticked sets)
+/** The unfinished workout of today, or null: { mode: 'plan' | 'free', done, sets }. */
+function activeWorkout() {
+  const t = todayInfo();
+  if (!t || !t.log) return null;
+  const f = t.log.free;
+  if (f && !f.done && (f.startedAt || Object.keys(t.log.sets).some((k) => k.startsWith('free:')))) {
+    const w = workoutStats(sessionWithExtras(state, t.date, 'free', t.log), t.log, 'free');
+    return { mode: 'free', done: w.done, sets: w.sets };
+  }
+  if (!t.pos || t.sid === 'rest' || t.log.done || !SESSIONS[t.sid]) return null;
+  const busy = Object.keys(t.log.sets).some((k) => k.startsWith(`${t.sid}:`) && t.log.sets[k].some(Boolean));
+  if (!busy && wkLeft !== t.key) return null;
+  const s = sessionWithExtras(state, t.date, t.sid, t.log);
+  if (!s) return null;
+  const w = workoutStats(s, t.log, t.sid);
+  return { mode: 'plan', done: w.done, sets: w.sets };
+}
+function leaveWorkout() {
+  if (currentView !== 'workout') return;
+  const t = todayInfo();
+  if (t && !t.log.done) wkLeft = t.key;
+  currentView = 'home';
+  render();
+}
+function resumeWorkout() {
+  const a = activeWorkout();
+  if (!a) return;
+  if (a.mode === 'free') startFree(); else wkMode = 'plan';
+  currentView = 'workout';
+  render(); window.scrollTo(0, 0);
+}
+const WK_RING = 2 * Math.PI * 28;
+function drawWkBubble() {
+  const el = $('#wkBubble');
+  if (!el) return;
+  const a = !wiz && currentView !== 'workout' && state.onboarded ? activeWorkout() : null;
+  el.hidden = !a;
+  if (!a) return;
+  const frac = a.sets ? a.done / a.sets : 0;
+  el.innerHTML = `<svg class="rest-ring" viewBox="0 0 64 64" aria-hidden="true"><circle class="trk" cx="32" cy="32" r="28"/><circle class="val" cx="32" cy="32" r="28" transform="rotate(-90 32 32)" stroke-dasharray="${WK_RING.toFixed(1)}" stroke-dashoffset="${(WK_RING * (1 - frac)).toFixed(1)}"/></svg>
+    <b>${a.done}/${a.sets}</b><small>继续训练</small>`;
+  el.setAttribute('aria-label', `继续训练，已完成 ${a.done}/${a.sets} 组`);
+  placeBubble(el, 'ianz-wk-pos', { side: 'left', y: 0.62 });
+}
+function placeBubble(el, key, def) {
+  let p = def;
+  try { p = JSON.parse(localStorage.getItem(key)) || def; } catch { /* private mode */ }
+  const size = el.offsetWidth || 72;
+  el.style.left = `${p.side === 'left' ? 12 : innerWidth - size - 12}px`;
+  el.style.top = `${Math.min(innerHeight - size - 90, Math.max(50, p.y * innerHeight))}px`;
+}
+/** Drag a round bubble anywhere; it snaps to the nearest side and remembers where it was (localStorage key). */
+function bindBubbleDrag(el, key, enabled, onPlace) {
   let drag = null;
   el.addEventListener('pointerdown', (e) => {
-    if (restMode !== 'mini') return;
+    if (!enabled()) return;
     const r = el.getBoundingClientRect();
     drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY, moved: false };
     el.setPointerCapture(e.pointerId);
@@ -624,8 +681,8 @@ function bindRestDrag() {
     el.classList.remove('dragging');
     if (drag.moved) {
       const r = el.getBoundingClientRect();
-      try { localStorage.setItem('ianz-rest-pos', JSON.stringify({ side: r.left + r.width / 2 < innerWidth / 2 ? 'left' : 'right', y: r.top / innerHeight })); } catch { /* private mode */ }
-      applyRestPos(el);
+      try { localStorage.setItem(key, JSON.stringify({ side: r.left + r.width / 2 < innerWidth / 2 ? 'left' : 'right', y: r.top / innerHeight })); } catch { /* private mode */ }
+      onPlace();
       el.dataset.dragged = '1'; // swallow the click that follows a drag
       setTimeout(() => { delete el.dataset.dragged; }, 50);
     }
@@ -633,7 +690,60 @@ function bindRestDrag() {
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
-  addEventListener('resize', () => applyRestPos(el));
+  addEventListener('resize', onPlace);
+}
+/*
+ * Back gestures. Android's system back (button or edge swipe) goes back in browser history, so the workout
+ * screen adds a history entry and leaves when it is popped. In the page itself a sideways swipe also leaves.
+ */
+function syncWorkoutHistory() {
+  const inWk = currentView === 'workout' && !wiz;
+  if (inWk && !(history.state && history.state.wk)) history.pushState({ wk: 1 }, '');
+  else if (!inWk && history.state && history.state.wk) { wkPopping = true; history.back(); }
+}
+let wkPopping = false;
+function bindWorkoutBack() {
+  addEventListener('popstate', () => {
+    if (wkPopping) { wkPopping = false; return; }
+    if (currentView === 'workout' && !wiz) {
+      if (sheetCtx) { closeSheet(); history.pushState({ wk: 1 }, ''); return; } // back closes an open sheet first
+      leaveWorkout();
+    }
+  });
+  const root = $('#view-workout');
+  let sw = null;
+  root.addEventListener('touchstart', (e) => {
+    sw = null;
+    if (e.touches.length !== 1 || wkSort || e.target.closest('input, select, textarea, .rest')) return;
+    sw = { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, on: false };
+  }, { passive: true });
+  root.addEventListener('touchmove', (e) => {
+    if (!sw) return;
+    const dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (!sw.on) {
+      if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; } // scrolling
+      if (Math.abs(dx) < 14) return;
+      sw.on = true;
+    }
+    sw.dx = dx;
+    root.style.transition = 'none';
+    root.style.transform = `translateX(${dx * 0.5}px)`;
+    root.style.opacity = String(Math.max(0.4, 1 - Math.abs(dx) / 600));
+  }, { passive: true });
+  const end = () => {
+    if (!sw) return;
+    const go = sw.on && Math.abs(sw.dx) > 90;
+    root.style.transition = 'transform .18s ease, opacity .18s ease';
+    root.style.transform = go ? `translateX(${sw.dx > 0 ? '' : '-'}40%)` : '';
+    root.style.opacity = go ? '0' : '';
+    sw = null;
+    if (go) setTimeout(() => { root.style.transition = root.style.transform = root.style.opacity = ''; leaveWorkout(); }, 160);
+  };
+  root.addEventListener('touchend', end);
+  root.addEventListener('touchcancel', end);
+  const bub = $('#wkBubble');
+  bindBubbleDrag(bub, 'ianz-wk-pos', () => true, () => placeBubble(bub, 'ianz-wk-pos', { side: 'left', y: 0.62 }));
+  bub.addEventListener('click', () => { if (!bub.dataset.dragged) resumeWorkout(); });
 }
 
 function bindWorkout() {
@@ -645,7 +755,7 @@ function bindWorkout() {
     const { log } = t;
     const sid = wkSid(t);
     const ds = b.dataset;
-    if (ds.act === 'back') { currentView = 'home'; render(); return; }
+    if (ds.act === 'back') return leaveWorkout();
     if (ds.fact) return freeAction(ds.fact, t);
     if (ds.wbsort !== undefined) { wkSort = !wkSort; render(); return; }
     if (ds.wbmv) { moveBlock(sessionWithExtras(state, t.date, sid, log).blocks, sid, ds.wbmv, Number(ds.dir)); render(); return; }
@@ -789,6 +899,7 @@ function bindWorkout() {
     $('#pxList').innerHTML = pickListHtml();
   });
   bindRestDrag();
+  bindWorkoutBack();
   $('#rest').addEventListener('click', (e) => {
     if (!restTimer) return;
     if (restMode === 'mini') { if (!$('#rest').dataset.dragged) { restMini = false; drawRest(); } return; }

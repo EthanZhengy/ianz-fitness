@@ -13,6 +13,7 @@ function render() {
   document.body.dataset.mode = mode;
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${mode}`));
   $('.tabbar').innerHTML = TABS.map(([k, label, icon]) => `<button data-view="${k}" class="${currentView === k ? 'active' : ''}">${ICONS[icon]}<span>${label}</span>${k === 'friends' && social.incoming.length ? `<i class="dot-badge">${social.incoming.length}</i>` : ''}</button>`).join('');
+  drawWkBubble();
   if (wiz) return renderWizard();
   try { RENDER[currentView](); } catch (err) {
     // never leave a blank page: show what happened and a way back
@@ -22,6 +23,7 @@ function render() {
       <button class="btn block" data-recover>回到训练首页</button></div>`;
   }
   if (restTimer) drawRest();
+  syncWorkoutHistory();
   updateBadge();
 }
 
