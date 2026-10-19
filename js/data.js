@@ -86,23 +86,16 @@ const PROGRAMS = {
     defaultSchedule: [0, 1, 2],
   },
   ian: {
-    id: 'ian', name: 'Ian 力量举训练（5/3/1 + 四分化）', short: 'Ian 力量举', weeks: 4, days: 4, period: 5, unit: '周', flex: true, restAfter: 0,
-    desc: '胸 → 腿 → 肩 → 背 四分化，练完才往下走。卧推、深蹲、硬拉按 5/3/1（带 + 组和 FSL 补量，第 4 周减载），辅助动作可替换，按双进阶自动规划下次的重量和次数。',
+    id: 'ian', name: 'Ian 力量举训练（5/3/1 + 四分化）', short: 'Ian 力量举', weeks: 12, days: 4, period: 5, unit: '周', flex: true, restAfter: 0,
+    desc: '胸 → 腿 → 肩 → 背 四分化，练完才往下走。卧推、深蹲、硬拉按 12 周 5/3/1（+ 组、单次组、FSL 补量，第 4、8 周减载，第 12 周测极限），辅助动作可替换，按双进阶自动规划下次的重量和次数。',
     defaultSchedule: [0, 1, 2, 3],
   },
 };
 
 /*
- * Ian 力量举训练: 5/3/1 for bench / squat / deadlift inside a chest → legs → shoulders → back split.
- * A "week" is one pass through the four days (not a calendar week). TM = 90% 1RM, +2.5kg bench / +5kg squat & deadlift per 4-week cycle.
- * FSL = First Set Last: 3 × 5 at the first working set's weight (not in the deload week).
+ * Ian 力量举训练: the 12-week 5/3/1 (WEEKS) for bench / squat / deadlift inside a chest → legs → shoulders → back split.
+ * A "week" is one pass through the four days (not a calendar week). FSL supplemental sets replace the 5/3/1 secondary lift.
  */
-const IAN_WEEKS = [
-  { name: '5 次组', sets: [[65, 5], [75, 5], [85, 5, true]], fsl: true },
-  { name: '3 次组', sets: [[70, 3], [80, 3], [90, 3, true]], fsl: true },
-  { name: '5/3/1 周', sets: [[75, 5], [85, 3], [95, 1, true]], fsl: true },
-  { name: '减载周', sets: [[40, 5], [50, 5], [60, 5]], fsl: false, deload: true },
-];
 /*
  * Accessory slots per day. o: options [name, exercise id (photo), load kind]. The first option is the default;
  * 换一个 picks another and the choice is remembered. lo–hi: double-progression rep range.
@@ -385,5 +378,5 @@ const DAY_FIT = {
 
 if (typeof module !== 'undefined') {
   module.exports = { LIFTS, LIFT_NAMES, TM_INC, LOWER, SESSIONS, SESSION_ORDER, TEST_ORDER, SESSION_LABEL,
-    WEEKS, EQUIPMENT, INJURIES, VARIANTS, EXERCISES, SLOT_NAMES, DAY_FIT, LIB_CATS, MUSCLE_CAT, LIFT_CAT, EQ_FILTERS, primaryEq, EX_IMG, exImgUrl, FOODS, PROGRAMS, MIKE_WEEKS, PPL_CYCLES, PPL_DAYS, IAN_WEEKS, IAN_DAYS, IAN_INC, MIKE_WARMUP, MIKE_VARIANTS };
+    WEEKS, EQUIPMENT, INJURIES, VARIANTS, EXERCISES, SLOT_NAMES, DAY_FIT, LIB_CATS, MUSCLE_CAT, LIFT_CAT, EQ_FILTERS, primaryEq, EX_IMG, exImgUrl, FOODS, PROGRAMS, MIKE_WEEKS, PPL_CYCLES, PPL_DAYS, IAN_DAYS, IAN_INC, MIKE_WARMUP, MIKE_VARIANTS };
 }

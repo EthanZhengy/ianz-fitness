@@ -23,17 +23,23 @@ assert.strictEqual(E.recommend(st, day(3)).session, 'ianLegs', 'missed days shif
 assert.strictEqual(E.position(st, day(6)).week, 2, 'four days done → 5/3/1 week 2');
 assert.strictEqual(E.recommend(st, day(6)).session, 'ianChest');
 
-// 5/3/1 weights: TM = 90% 1RM; week 1 65/75/85 ×5 (+) and FSL 3×5; week 2 70/80/90 ×3
+// 12-week 5/3/1 (same table as the 5/3/1 plan): week 1 70/80/90 ×3 (+) and a 100% single, then FSL at the first-set weight
 const w1 = main(E.buildSession({ ...st, logs: {} }, day(0), 'ianChest', {}));
-assert.deepStrictEqual(w1.rows.map((r) => [r.w, r.reps, !!r.plus, r.label || '']),
-  [[57.5, 5, false, ''], [67.5, 5, false, ''], [77.5, 5, true, ''], [57.5, 5, false, 'FSL'], [57.5, 5, false, 'FSL'], [57.5, 5, false, 'FSL']]);
+assert.deepStrictEqual(w1.rows.map((r) => [r.w, r.reps, !!r.plus, r.label || (r.extra ? 'single' : '')]),
+  [[62.5, 3, false, ''], [72.5, 3, false, ''], [80, 3, true, ''], [90, 1, false, 'single'],
+    [62.5, 5, false, 'FSL'], [62.5, 5, false, 'FSL'], [62.5, 5, false, 'FSL'], [62.5, 5, false, 'FSL'], [62.5, 5, false, 'FSL']]);
 const w2 = main(E.buildSession(st, day(6), 'ianChest', {}));
-assert.deepStrictEqual(w2.rows.slice(0, 3).map((r) => r.w), [62.5, 72.5, 80]);
-assert.strictEqual(main(E.buildSession(st, day(4), 'ianBack', {})).rows[2].w, E.roundTo(162 * 0.85, 2.5));
+assert.deepStrictEqual(w2.rows.slice(0, 3).map((r) => r.w), [57.5, 67.5, 77.5], 'week 2: 65/75/85 ×5');
 assert.ok(!main(E.buildSession(st, day(5), 'ianShoulder', {})), 'no overhead press on shoulder day');
-// next 4-week cycle: bench TM +2.5, deadlift +5
-assert.strictEqual(E.ianTM(st, 1, 'bench'), 92.5);
-assert.strictEqual(E.ianTM(st, 1, 'deadlift'), 167);
+assert.strictEqual(E.progOf(st).weeks, 12);
+// TM steps up at weeks 5 and 9 like the 5/3/1 plan; week 12 = max tests
+assert.strictEqual(E.ianTM(st, 0, 'bench', 5), 92.5);
+assert.strictEqual(E.ianTM(st, 0, 'deadlift', 9), 172);
+const cal = { ...st, logs: {}, autoShift: false };
+const wk = (w, sid) => E.buildSession(cal, E.addDays(E.parseKey(st.startDate), (w - 1) * 5), sid, {});
+assert.ok(wk(12, 'ianChest').test); assert.strictEqual(main(wk(12, 'ianBack')).lift, 'deadlift');
+assert.ok(blk(wk(12, 'ianShoulder'), 'rear').deload, 'shoulder day stays light in test week');
+assert.ok(main(wk(4, 'ianLegs')).rows.every((r) => !r.label), 'no FSL in the deload week');
 
 // double progression on face pulls (12–15): all sets at 15 → +2.5kg back to 12 reps
 const fp = (rec) => {
@@ -56,7 +62,7 @@ const lat = E.buildSession({ ...st, accLog: { 'ian_Side_Lateral_Raise_db_12-15':
 assert.strictEqual(blk(lat, 'side1').rows[0].w, 12);
 // deload week (week 4): one set less, 20% lighter
 const late = { ...st, logs: {}, autoShift: false, accLog: { 'ian_Face_Pull_cable_12-15': { last: { date: '2026-01-01', w: 20, reps: [15, 15, 15] } } } };
-const dl = blk(E.buildSession(late, E.addDays(E.parseKey(st.startDate), 3 * 5), 'ianShoulder', {}), 'rear');
+const dl = blk(E.buildSession(late, E.addDays(E.parseKey(st.startDate), 3 * 5), 'ianShoulder', {}), 'rear'); // week 4 = deload
 assert.ok(dl.deload); assert.strictEqual(dl.rows.length, 2); assert.strictEqual(dl.rows[0].w, 17.5);
 // leg-day arm slot alternates biceps / triceps by week
 assert.strictEqual(blk(E.buildSession({ ...st, logs: {} }, day(0), 'ianLegs', {}), 'arm').cat, 'bi');

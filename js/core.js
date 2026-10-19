@@ -1,7 +1,7 @@
 'use strict';
 /* Shared state, helpers, reminders and calendar export. */
 
-const APP_VERSION = '1.30.0';
+const APP_VERSION = '1.30.1';
 const STORAGE_KEY = 'trainer-531-v2';
 const ALL_EQUIP = Object.keys(EQUIPMENT);
 const GYM_EQUIP = ALL_EQUIP.filter((e) => e !== 'ssb');
@@ -114,7 +114,8 @@ function logFor(key) {
   return l;
 }
 const sessionName = (s, week) => (s === 'rest' ? '休息' : isCustomDay(s) ? (customDay(state, s) || {}).name || '自定义训练日'
-  : LIFT_NAMES[s] && week === 12 ? `${LIFT_NAMES[s]}测试` : SESSION_LABEL[s]);
+  : LIFT_NAMES[s] && week === 12 ? `${LIFT_NAMES[s]}测试`
+  : programOfSession(s) === 'ian' && week === 12 && SESSIONS[s] && SESSIONS[s].main ? `${SESSION_LABEL[s]} · ${LIFT_NAMES[SESSIONS[s].main]}测试` : SESSION_LABEL[s]);
 const chip = (label, attrs, on, extra = '') => `<button class="chip${on ? ' on' : ''}${extra}" ${attrs}>${label}</button>`;
 function macrosHtml(n) {
   return `<div class="macros">

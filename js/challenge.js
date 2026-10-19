@@ -45,10 +45,10 @@ const shiftOptHtml = (rule) => `<label class="row check shift-opt"><input type="
 function programCardHtml(cycle) {
   if (isIan()) {
     const lifts = ['bench', 'squat', 'deadlift'];
-    return `<div class="card"><h2>训练最大重量 TM（第 ${cycle + 1} 个周期）</h2>
-      <table class="tm"><tr><th></th><th>TM</th><th>第1周</th><th>第2周</th><th>第3周</th></tr>
-      ${lifts.map((l) => { const tm = ianTM(state, cycle, l); const inc = incOf(state, variantOf(state, l)); return `<tr><td>${variantOf(state, l).name.replace(/（.*）/, '')}</td><td>${fmtW(roundTo(tm, 0.5))}</td>${IAN_WEEKS.slice(0, 3).map((w) => `<td>${fmtW(roundTo(tm * w.sets[2][0] / 100, inc))}×${w.sets[2][1]}+</td>`).join('')}</tr>`; }).join('')}</table>
-      <p class="muted">胸 → 腿 → 肩 → 背，四天练完算一「周」。5/3/1：第 1 周 5 次组、第 2 周 3 次组、第 3 周 5/3/1、第 4 周减载；每个周期后卧推 TM +2.5kg、深蹲 / 硬拉 +5kg。前三周主项后做 FSL 3×5。辅助动作双进阶：每组都做到次数上限，下次自动加重。</p>
+    return `<div class="card"><h2>训练最大重量 TM（第 ${cycle + 1} 轮）</h2>
+      <table class="tm"><tr><th></th><th>1–4周</th><th>5–8周</th><th>9–12周</th></tr>
+      ${lifts.map((l) => `<tr><td>${variantOf(state, l).name.replace(/（.*）/, '')}</td>${[1, 5, 9].map((w) => `<td>${fmtW(roundTo(tmFor(state, cycle, w, l), 0.5))}</td>`).join('')}</tr>`).join('')}</table>
+      <p class="muted">和 5/3/1 计划一样的 12 周：第 5、9 周卧推 +2.5kg、深蹲 / 硬拉 +5kg；第 4、8 周减载；第 12 周胸日测卧推、腿日测深蹲、背日测硬拉，下一轮按新 1RM × 90% 重新计算。胸 → 腿 → 肩 → 背四天练完算一「周」，主项后做 FSL 补量；辅助动作双进阶，每组都做到次数上限，下次自动加重。</p>
       ${shiftOptHtml('胸、腿、肩、背都练完才进入下一周。')}
       <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改 1RM / 主项动作</button>
         ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">整体顺延一周</button>

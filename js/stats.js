@@ -42,7 +42,7 @@ function sessionRef(st, date, sid) {
   if (!pos || !SESSIONS[sid]) return 0;
   if (programOfSession(sid) === 'mike') return mikeMax(st, pos.cycle, sid === 'mike2' ? 'cg' : 'bench');
   if (programOfSession(sid) === 'ppl') return pplMax(st, pos.cycle, SESSIONS[sid].main || 'bench');
-  if (programOfSession(sid) === 'ian') return ianTM(st, pos.cycle, SESSIONS[sid].main || 'bench') / 0.9;
+  if (programOfSession(sid) === 'ian') return tmFor(st, pos.cycle, pos.week, SESSIONS[sid].main || 'bench') / 0.9;
   return tmFor(st, pos.cycle, pos.week, SESSIONS[sid].main) / 0.9;
 }
 
@@ -305,7 +305,7 @@ function tmSeries(st, lift, today) {
   return Array.from({ length: last + 1 }, (_, w) => ({
     weekAbs: w, date: cycleRange(st, w).start,
     // 5/3/1 plots its training max; the Mike plan works straight off the bench 1RM
-    tm: isIan(st) ? (lift !== 'press' ? roundTo(ianTM(st, Math.floor(w / n), lift), 0.5) : null)
+    tm: isIan(st) ? (lift !== 'press' ? roundTo(tmFor(st, Math.floor(w / n), (w % n) + 1, lift), 0.5) : null)
       : isPPL(st) ? (['bench', 'squat'].includes(lift) ? roundTo(pplMax(st, Math.floor(w / n), lift), 0.5) : null)
       : isMike(st) ? (lift === 'bench' ? roundTo(mikeMax(st, Math.floor(w / n), 'bench'), 0.5) : null)
       : roundTo(tmFor(st, Math.floor(w / n), (w % n) + 1, lift), 0.5),

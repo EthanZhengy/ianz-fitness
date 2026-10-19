@@ -200,8 +200,8 @@ function renderWizard() {
       const wk = pos0 ? pos0.week : 1;
       const maxes = isIan(d)
         ? `<div class="card"><h3>训练最大重量（TM = 90% 1RM）</h3>
-            <table class="tm"><tr><th></th><th>TM</th><th>第1周 +组</th><th>第3周 +组</th></tr>
-            ${['bench', 'squat', 'deadlift'].map((l) => { const tm = ianTM(tmp, 0, l); return `<tr><td>${variantOf(tmp, l).name.replace(/（.*）/, '')}</td><td>${fmtW(roundTo(tm, 0.5))}</td><td>${fmtW(roundTo(tm * 0.85, d.plateInc))}×5+</td><td>${fmtW(roundTo(tm * 0.95, d.plateInc))}×1+</td></tr>`; }).join('')}</table>`
+            <table class="tm"><tr><th></th><th>第1–4周</th><th>第5–8周</th><th>第9–12周</th></tr>
+            ${['bench', 'squat', 'deadlift'].map((l) => `<tr><td>${variantOf(tmp, l).name.replace(/（.*）/, '')}</td>${[1, 5, 9].map((w) => `<td>${fmtW(roundTo(tmFor(tmp, 0, w, l), 0.5))}</td>`).join('')}</tr>`).join('')}</table>`
         : isPPL(d)
         ? `<div class="card"><h3>主项重量（按 1RM 百分比）</h3>
             <table class="tm"><tr><th>循环</th><th>组×次</th><th>卧推</th><th>深蹲</th></tr>
