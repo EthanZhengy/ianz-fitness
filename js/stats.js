@@ -207,16 +207,20 @@ function summarizeSession(st, date, sid, log) {
 
 /** Every completed session, oldest first. */
 function trainingHistory(st) {
-  return Object.keys(st.logs).sort().map((k) => {
+  return Object.keys(st.logs).sort().flatMap((k) => {
     const log = st.logs[k];
-    if (!log.done || !SESSIONS[log.session]) return null;
-    const date = parseKey(k);
-    const program = programOfSession(log.session);
-    const sv = asProgram(st, program); // each workout is read against the program it belongs to
-    const pos = position(sv, date);
-    if (!pos) return null;
-    const res = (!log.offline && log.result) || summarizeSession(sv, date, log.session, log);
-    return res && { key: k, date, pos, program, session: log.session, offline: !!log.offline, ...res };
+    return doneList(log).map(({ sid, offline }) => {
+      if (!SESSIONS[sid]) return null;
+      const date = parseKey(k);
+      const program = programOfSession(sid);
+      const sv = asProgram(st, program); // each workout is read against the program it belongs to
+      const pos = position(sv, date);
+      if (!pos) return null;
+      const own = sid === log.session && log.done;
+      const l = own ? log : { session: sid, done: true, offline: true, sets: {}, amrap: {}, sx: {}, extra: {}, swaps: {} };
+      const res = (own && !log.offline && log.result) || summarizeSession(sv, date, sid, l);
+      return res && { key: k, date, pos, program, session: sid, offline, ...res };
+    });
   }).filter(Boolean);
 }
 
@@ -227,7 +231,8 @@ function sessionStatus(st, weekAbs, sid, today) {
   for (let i = 0; i < P; i++) {
     const k = dateKey(addDays(start, i));
     const l = st.logs[k];
-    if (l && l.done && l.session === sid) return { status: l.offline ? 'offline' : 'app', date: addDays(start, i) };
+    const x = doneList(l).find((d) => d.sid === sid);
+    if (x) return { status: x.offline ? 'offline' : 'app', date: addDays(start, i) };
   }
   const idx = orderFor((weekAbs % progOf(st).weeks) + 1, st).indexOf(sid);
   const date = addDays(start, st.schedule[idx] ?? idx);
@@ -236,22 +241,30 @@ function sessionStatus(st, weekAbs, sid, today) {
   return { status: weekSkipped(st, weekAbs, weekEnd) ? 'skipped' : 'missed', date };
 }
 
-/**
- * Mark a session as completed outside the app. Uses its scheduled day if free,
- * otherwise another free day of that week, never a future day.
- */
-function markOffline(st, weekAbs, sid, today) {
+/** Days a session of week `weekAbs` can be marked on: the week's days up to today. */
+function markDays(st, weekAbs, today) {
   const { start, end } = cycleRange(st, weekAbs);
   const P = dayDiff(start, end) + 1;
-  const idx = orderFor((weekAbs % progOf(st).weeks) + 1, st).indexOf(sid);
-  const pref = addDays(start, st.schedule[idx] ?? idx);
-  const days = Array.from({ length: P }, (_, i) => addDays(start, i))
-    .filter((d) => dayDiff(d, today) >= 0)
-    .sort((a, b) => Math.abs(dayDiff(pref, a)) - Math.abs(dayDiff(pref, b)));
-  const free = days.find((d) => { const l = st.logs[dateKey(d)]; return !l || !l.done; });
-  if (!free) return false;
-  const k = dateKey(free);
-  st.logs[k] = { ...(st.logs[k] || {}), session: sid, done: true, offline: true };
+  return Array.from({ length: Math.max(0, P) }, (_, i) => addDays(start, i)).filter((d) => dayDiff(d, today) >= 0);
+}
+/**
+ * Mark a session as completed outside the app, on `on` (a date) or else on its scheduled day (the nearest day of
+ * that week that is not in the future). Stored in log.off, so that day's own workout is left alone.
+ */
+function markOffline(st, weekAbs, sid, today, on) {
+  if (sessionStatus(st, weekAbs, sid, today).status === 'app') return true;
+  unmarkOffline(st, weekAbs, sid);
+  let date = on;
+  if (!date) {
+    const { start } = cycleRange(st, weekAbs);
+    const idx = orderFor((weekAbs % progOf(st).weeks) + 1, st).indexOf(sid);
+    const pref = addDays(start, st.schedule[idx] ?? idx);
+    date = markDays(st, weekAbs, today).sort((a, b) => Math.abs(dayDiff(pref, a)) - Math.abs(dayDiff(pref, b)))[0];
+  }
+  if (!date || dayDiff(date, today) < 0) return false;
+  const k = dateKey(date);
+  const l = st.logs[k] = st.logs[k] || {};
+  l.off = [...new Set([...(l.off || []), sid])];
   return true;
 }
 function unmarkOffline(st, weekAbs, sid) {
@@ -260,7 +273,9 @@ function unmarkOffline(st, weekAbs, sid) {
   for (let i = 0; i < P; i++) {
     const k = dateKey(addDays(start, i));
     const l = st.logs[k];
-    if (l && l.offline && l.session === sid) { l.done = false; l.offline = false; l.session = undefined; }
+    if (!l) continue;
+    if (l.offline && l.session === sid) { l.done = false; l.offline = false; l.session = undefined; }
+    if (l.off && l.off.includes(sid)) { l.off = l.off.filter((x) => x !== sid); if (!l.off.length) delete l.off; }
   }
 }
 
@@ -340,5 +355,5 @@ function personalRecords(st, hist) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { summarizeSession, sessionWithExtras, sessionRef, isCustomDay, customDay, freeSummary, blockRows, SET_TYPES, SET_TYPE_ORDER, trainingHistory, sessionStatus, markOffline, unmarkOffline, weekly, streak, tmSeries, e1rmSeries, personalRecords, exerciseCounts };
+  module.exports = { markDays, summarizeSession, sessionWithExtras, sessionRef, isCustomDay, customDay, freeSummary, blockRows, SET_TYPES, SET_TYPE_ORDER, trainingHistory, sessionStatus, markOffline, unmarkOffline, weekly, streak, tmSeries, e1rmSeries, personalRecords, exerciseCounts };
 }

@@ -192,8 +192,8 @@ function bindChallenge() {
     const b = e.target.closest('button');
     if (b && (b.dataset.mark || b.dataset.unmark)) {
       const w = Number(b.dataset.week);
-      if (b.dataset.mark) { if (!markOffline(state, w, b.dataset.mark, new Date())) return toast('这一周没有空的日期可以标记'); }
-      else unmarkOffline(state, w, b.dataset.unmark);
+      if (b.dataset.mark) return openMarkSession(w, b.dataset.mark);
+      unmarkOffline(state, w, b.dataset.unmark);
       save(); render(); return;
     }
     const a = b?.dataset.act;

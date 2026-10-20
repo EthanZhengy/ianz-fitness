@@ -63,6 +63,16 @@ function slotOf(st, date) {
  * 自动顺延 (推拉腿): a cycle only moves on once its push, pull and legs are all done (then one rest day),
  * so a missed day shifts everything after it by one. st.cycleBreaks = days where the user skipped ahead.
  */
+/**
+ * Plan sessions finished on a day: the day's own workout (log.session) plus sessions marked as done outside the
+ * app on that day (log.off), which never touch the day's own workout. Older marks used log.session + log.offline.
+ */
+function doneList(l) {
+  if (!l) return [];
+  const out = l.done && l.session && l.session !== 'rest' ? [{ sid: l.session, offline: !!l.offline }] : [];
+  (l.off || []).forEach((sid) => { if (!out.some((x) => x.sid === sid)) out.push({ sid, offline: true }); });
+  return out;
+}
 const autoShift = (st) => !!progOf(st).flex && cur(st).autoShift !== false;
 function shiftCycles(st) {
   st = cur(st);
@@ -71,7 +81,7 @@ function shiftCycles(st) {
   const ev = [];
   Object.keys(st.logs || {}).forEach((k) => {
     const l = st.logs[k];
-    if (k >= st.startDate && l && l.done && order.includes(l.session)) ev.push([k, 1, l.session]);
+    if (k >= st.startDate) doneList(l).forEach((x) => { if (order.includes(x.sid)) ev.push([k, 1, x.sid]); });
   });
   (st.cycleBreaks || []).forEach((k) => { if (k >= st.startDate) ev.push([k, 2]); });
   // 调整当前周: from this day on the plan is at week `wa` (processed before that day's sessions)
@@ -202,13 +212,14 @@ function doneSessions(st, pos, excludeKey) {
   for (let i = 0; i <= dayDiff(pos.weekStart, pos.weekEnd); i++) {
     const k = dateKey(addDays(pos.weekStart, i));
     const l = st.logs[k];
-    if (k !== excludeKey && l && l.done && l.session && l.session !== 'rest') out.push(l.session);
+    doneList(l).forEach((x) => { if (k !== excludeKey || x.sid !== l.session) out.push(x.sid); }); // today's own pick is excluded
   }
   return out;
 }
 function doneOn(st, date) {
   const l = st.logs[dateKey(date)];
-  return l && l.done && l.session !== 'rest' ? l.session : null;
+  const d = doneList(l);
+  return d.length ? d[0].sid : null;
 }
 const isLower = (s) => !!LOWER[s];
 
@@ -916,7 +927,7 @@ function sessionSummary(st, date, sessionId, readiness) {
 
 if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
-    position, recommend, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
+    position, recommend, doneList, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
     progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike,
     normalizePlanDef, registerCustomPrograms, buildCustom, cpMax, cpSets, planLifts, isCustom, isCustomProg, CP_DEFAULT_DAYS };

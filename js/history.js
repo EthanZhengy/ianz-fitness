@@ -24,17 +24,19 @@ function dayStats(key) {
   const date = parseKey(key);
   const out = { vol: 0, cats: {}, cardio: 0, offline: false, items: [] };
   const addCats = (list) => list.forEach((c) => { if (CAT_NAME[c]) out.cats[c] = (out.cats[c] || 0) + 1; });
+  const pos = position(state, date);
+  const offItem = (sid) => { // marked as done outside the app: estimated from the plan
+    const S = SESSIONS[sid];
+    const h = trainingHistory(state).find((x) => x.key === key && x.session === sid);
+    out.offline = true;
+    out.vol += h ? h.volume : 0;
+    addCats([S.main, S.secondary].filter(Boolean).map((x) => LIFT_CAT[x]));
+    out.items.push({ title: sessionName(sid, pos ? pos.week : 1), sub: h ? `${esc(h.variant)} · 按计划估算` : '', badge: BADGE.offline });
+  };
   if (l && l.done && SESSIONS[l.session]) {
-    const pos = position(state, date);
     const name = sessionName(l.session, pos ? pos.week : 1);
-    if (l.offline) {
-      const S = SESSIONS[l.session];
-      const h = histByDay()[key];
-      out.offline = true;
-      out.vol += h ? h.volume : 0;
-      addCats([S.main, S.secondary].filter(Boolean).map((x) => LIFT_CAT[x]));
-      out.items.push({ title: name, sub: h ? `${esc(h.variant)} · 按计划估算` : '', badge: BADGE.offline });
-    } else {
+    if (l.offline) offItem(l.session);
+    else {
       const r = freeSummary(state, date, l, l.session);
       const h = histByDay()[key];
       out.vol += r.volume; addCats(r.doneCats.length ? r.doneCats : r.cats);
@@ -45,6 +47,7 @@ function dayStats(key) {
     out.vol += r.volume || 0; addCats(resultCats(r));
     out.items.push({ title: esc(r.title), sub: `${esc((r.names || []).slice(0, 4).join('、'))} · ${r.done} 组`, badge: BADGE.app });
   }
+  ((l && l.off) || []).forEach((sid) => { if (SESSIONS[sid] && !(l.done && l.session === sid)) offItem(sid); });
   if (l && l.free && l.free.done && l.free.result) {
     const r = l.free.result;
     out.vol += r.volume || 0; addCats(resultCats(r));
@@ -98,7 +101,8 @@ function calendarPageHtml() {
   let html = `<div class="hx-cal"><div class="hx-wd">${['一', '二', '三', '四', '五', '六', '日'].map((w) => `<span>${w}</span>`).join('')}</div><div class="hx-grid">${cells}</div></div>
     <div class="hx-sum"><div><b>${sum.days}</b><span>训练天数</span></div><div><b>${sum.vol >= 10000 ? (sum.vol / 1000).toFixed(1) : Math.round(sum.vol)}</b><span>${sum.vol >= 10000 ? '容量 (吨)' : '容量 (kg)'}</span></div><div><b>${sum.cardio}</b><span>有氧次数</span></div></div>`;
   const keys = calDay ? [calDay] : monthKeys.reverse();
-  html += calDay ? `<div class="row between hx-lhead"><h3>${fmtDate(parseKey(calDay))} ${WEEKDAYS[weekdayIdx(parseKey(calDay))]}</h3><button class="link" data-calday="${calDay}">看整月</button></div>` : '';
+  const canMark = calDay && parseKey(calDay) <= now && position(state, parseKey(calDay));
+  html += calDay ? `<div class="row between hx-lhead"><h3>${fmtDate(parseKey(calDay))} ${WEEKDAYS[weekdayIdx(parseKey(calDay))]}</h3><span class="row">${canMark ? `<button class="link" data-markcal="${calDay}">＋ 标记完成</button>` : ''}<button class="link" data-calday="${calDay}">看整月</button></span></div>` : '';
   html += keys.map((k) => dayRowHtml(k)).join('') || `<p class="muted center pad">${calDay ? '这天没有训练记录' : '这个月还没有训练记录'}</p>`;
   return html;
 }
@@ -194,7 +198,8 @@ function statsTabHtml() {
       const date = addDays(start, d);
       const l = state.logs[dateKey(date)];
       const label = `${fmtDate(date)} ${WEEKDAYS[weekdayIdx(date)]}`;
-      if (l && l.done && SESSIONS[l.session]) return { cls: l.offline ? 'off' : 'app', tip: `${label} · ${sessionName(l.session, (w % progOf().weeks) + 1)} · ${l.offline ? 'App 外完成' : 'App 完成'}` };
+      const dl = doneList(l).filter((x) => SESSIONS[x.sid]);
+      if (dl.length) return { cls: dl.some((x) => !x.offline) ? 'app' : 'off', tip: `${label} · ${dl.map((x) => `${sessionName(x.sid, (w % progOf().weeks) + 1)}（${x.offline ? 'App 外完成' : 'App 完成'}）`).join('、')}` };
       if (l && l.done && l.result && l.result.custom) return { cls: 'app', tip: `${label} · ${l.result.title}` };
       if (l && l.free && l.free.done) return { cls: 'app', tip: `${label} · ${l.free.title || '自由训练'}` };
       if (dayDiff(today, date) > 0) return { cls: 'future' };
@@ -219,7 +224,54 @@ function bodyweightCard(today) {
     ${pts.length > 1 ? `<p class="muted">${fmtDate(first.x)} 至今 ${last.y - first.y >= 0 ? '+' : ''}${(last.y - first.y).toFixed(1)}kg</p>` : ''}</div>`;
 }
 
+/* ---------- 标记完成: any plan session on any day up to today, without touching that day's own workout ---------- */
+/** Pick the day a session was done (from 挑战 / 训练 page). */
+function openMarkSession(weekAbs, sid) {
+  const today = new Date();
+  const days = markDays(state, weekAbs, today);
+  if (!days.length) return toast(`这一${unitOf()}还没开始，不能标记`);
+  const s = sessionStatus(state, weekAbs, sid, today);
+  const on = s.status === 'offline' ? dateKey(s.date) : '';
+  openSheet(`标记完成 · ${sessionName(sid, (weekAbs % progOf().weeks) + 1)}`, `<p class="muted">是哪天练的？只记在那一天，不影响那天在 App 里的训练；会计入进度和统计（按计划重量估算）。</p>
+    <div class="chips">${days.slice().reverse().map((d) => chip(`${fmtDate(d)} ${WEEKDAYS[weekdayIdx(d)]}${dateKey(d) === dateKey(today) ? '（今天）' : ''}`, `data-markon="${dateKey(d)}"`, on === dateKey(d))).join('')}</div>
+    ${on ? '<button class="btn block ghost" data-markoff>取消标记</button>' : ''}`, { type: 'marksess', weekAbs, sid, reopen: () => openMarkSession(weekAbs, sid) });
+}
+/** Pick the sessions done on a day (from the 历史 calendar). */
+function openMarkDay(key) {
+  const date = parseKey(key), today = new Date();
+  const pos = position(state, date);
+  if (!pos) return toast('这天不在当前计划里');
+  const rows = orderFor(pos.week).map((sid) => {
+    const s = sessionStatus(state, pos.weekAbs, sid, today);
+    const where = ['app', 'offline'].includes(s.status) ? dateKey(s.date) : '';
+    const note = s.status === 'app' ? '✓ App 完成' : where === key ? '📝 这天完成' : where ? `📝 ${fmtDate(s.date)}` : '';
+    return `<button class="pick-row${where === key ? ' on' : ''}" data-markday="${sid}" ${s.status === 'app' ? 'disabled' : ''}><b class="grow">${esc(sessionName(sid, pos.week))}</b><span class="muted small">${note}</span></button>`;
+  }).join('');
+  openSheet(`${fmtDate(date)} ${WEEKDAYS[weekdayIdx(date)]} 练了什么？`, `<p class="muted">第 ${pos.week} ${unitOf()}的训练，点一下标记为这天在 App 外完成，再点取消。不影响这天在 App 里的训练记录。</p>${rows}`,
+    { type: 'markday', key, reopen: () => openMarkDay(key) });
+}
+function markChanged() { save(); render(); if (typeof syncPushSoon === 'function') syncPushSoon(); }
+
 function bindHistory() {
+  $('#sheet').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || !sheetCtx) return;
+    const today = new Date();
+    if (sheetCtx.type === 'marksess' && (b.dataset.markon || b.dataset.markoff !== undefined)) {
+      const { weekAbs, sid } = sheetCtx;
+      if (b.dataset.markoff !== undefined) { unmarkOffline(state, weekAbs, sid); toast('已取消标记'); }
+      else { markOffline(state, weekAbs, sid, today, parseKey(b.dataset.markon)); toast(`已标记：${fmtDate(parseKey(b.dataset.markon))} 📝 App 外完成`); }
+      closeSheet(); markChanged();
+    } else if (sheetCtx.type === 'markday' && b.dataset.markday) {
+      const { key } = sheetCtx;
+      const pos = position(state, parseKey(key));
+      const sid = b.dataset.markday;
+      const s = sessionStatus(state, pos.weekAbs, sid, today);
+      if (s.status === 'offline' && dateKey(s.date) === key) unmarkOffline(state, pos.weekAbs, sid);
+      else markOffline(state, pos.weekAbs, sid, today, parseKey(key));
+      markChanged(); openMarkDay(key);
+    }
+  });
   const root = $('#view-history');
   bindChartTips(root);
   root.addEventListener('click', (e) => {
@@ -233,6 +285,7 @@ function bindHistory() {
       if (d.getMonth() !== m0.getMonth()) { const n = new Date(); calMonth = (n.getFullYear() - d.getFullYear()) * 12 + n.getMonth() - d.getMonth(); if (calMonth < 0) return; }
       calDay = calDay === k ? null : k; render();
     }
+    else if (b.dataset.markcal) openMarkDay(b.dataset.markcal);
     else if (b.dataset.xtab) { histTab = b.dataset.xtab; render(); }
     else if (b.dataset.pw || b.dataset.pwid || b.dataset.pwpose) photoWallClick(b);
     else if (b.dataset.act === 'bw') {

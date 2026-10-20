@@ -15,7 +15,9 @@ function todayInfo(date = new Date()) {
   const pos = position(state, date);
   const rec = recommend(state, date);
   // a session picked under another plan (before switching plans) doesn't exist in this one: use the recommendation
-  const sid = log.session && sessionInPlan(log.session) ? log.session : rec.session;
+  // a workout already started today stays today's workout, even if the plan moves on (e.g. 标记完成 on other days)
+  const started = Object.keys(log.sets || {}).map((k) => k.split(':')[0]).find((s) => s !== 'free' && sessionInPlan(s) && Object.keys(log.sets).some((k) => k.startsWith(`${s}:`) && log.sets[k].some(Boolean)));
+  const sid = log.session && sessionInPlan(log.session) ? log.session : started || rec.session;
   const kind = sid === 'rest' || !pos ? 'rest' : LOWER[sid] ? 'lower' : 'upper';
   return { date, key, log, pos, rec, sid, kind, n: nutritionFor(state, kind) };
 }
@@ -219,12 +221,11 @@ function bindHome() {
       t.log.session = ds.pick;
     } else if (ds.ready) t.log.readiness = ds.ready;
     else if (ds.offline) {
-      if (!markOffline(state, t.pos.weekAbs, ds.offline, t.date)) return toast(`本${unitOf()}已经没有空的日期可以标记了`);
-      toast(`已标记：${sessionName(ds.offline, t.pos.week)} 📝 App 外完成`);
+      return openMarkSession(t.pos.weekAbs, ds.offline);
     } else if (ds.mark || ds.unmark) {
       const w = Number(ds.week);
-      if (ds.mark) { if (!markOffline(state, w, ds.mark, t.date)) return toast(`这一${unitOf()}没有空的日期可以标记`); }
-      else unmarkOffline(state, w, ds.unmark);
+      if (ds.mark) return openMarkSession(w, ds.mark);
+      unmarkOffline(state, w, ds.unmark);
     } else if (ds.act === 'start') { wkMode = 'plan'; currentView = 'workout'; render(); window.scrollTo(0, 0); return; }
     else if (ds.act === 'friends') return openFriends();
     else if (ds.act === 'start-now') state.startDate = dateKey(mondayOf(t.date));
