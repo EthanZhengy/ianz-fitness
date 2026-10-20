@@ -93,6 +93,8 @@ function shiftCycles(st) {
     const d = parseKey(k);
     if (type === 0) { // jump: close what is open and start week `val` today
       if (c.start < d) { c.end = addDays(d, -1); cycles.push(c); }
+      const prev = cycles[cycles.length - 1];
+      if (prev && prev.end && prev.end >= d) prev.end = addDays(d, -1); // rest day(s) after a finished week cut short
       c = { start: d, end: null, done: [], wa: val };
       return;
     }
@@ -155,6 +157,34 @@ function setCurrentWeek(st, week, today = new Date()) {
     st.weekAdjust = (st.weekAdjust || []).filter((a) => a.date !== key).concat({ date: key, wa });
   }
   return wa;
+}
+/** Every required session of the week containing `date` is done (in the app or marked). */
+function weekComplete(st, date) {
+  const pos = position(st, date);
+  if (!pos) return false;
+  const done = doneSessions(st, pos);
+  return orderFor(pos.week, st).slice(0, requiredFor(pos.week, st)).every((s) => done.includes(s));
+}
+/**
+ * 进入下一周: start the next program week now instead of waiting for the calendar (or the rest day).
+ * It starts today, or tomorrow when today already has a finished session (that one stays in the old week).
+ * Returns { wa, start } or null when the next week would start tomorrow anyway.
+ */
+function advanceWeek(st, today = new Date()) {
+  const pos = position(st, today);
+  if (!pos) return null;
+  const wa = pos.weekAbs + 1;
+  const start = doneList(st.logs[dateKey(today)]).length ? addDays(today, 1) : new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const key = dateKey(start);
+  const next = position(st, start);
+  if (next && next.weekAbs >= wa) return null; // already starts then
+  if (autoShift(st)) {
+    st.weekAdjust = (st.weekAdjust || []).filter((a) => a.date !== key).concat({ date: key, wa });
+  } else {
+    // the week (period) that contains `start` becomes week wa; the finished week ends the day before
+    st.startDate = dateKey(addDays(start, -wa * periodOf(st)));
+  }
+  return { wa, start };
 }
 const slotName = (st, date) => (periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `循环第 ${slotOf(st, date) + 1} 天`);
 const isTestWeek = (week, st) => ['531', 'mike', 'ian'].includes(progOf(st).id) && week === progOf(st).weeks;
@@ -927,7 +957,7 @@ function sessionSummary(st, date, sessionId, readiness) {
 
 if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
-    position, recommend, doneList, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
+    position, recommend, doneList, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
     progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike,
     normalizePlanDef, registerCustomPrograms, buildCustom, cpMax, cpSets, planLifts, isCustom, isCustomProg, CP_DEFAULT_DAYS };

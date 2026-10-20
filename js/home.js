@@ -118,6 +118,20 @@ function renderHome() {
 }
 
 const DAY_EN = { press: 'PRESS DAY', deadlift: 'DEADLIFT DAY', bench: 'BENCH DAY', squat: 'SQUAT DAY', mike1: 'PUSH DAY · 1', mike2: 'PUSH DAY · 2', mikeTest: 'TEST DAY', pplPush: 'PUSH DAY', pplPull: 'PULL DAY', pplLegs: 'LEG DAY', ianChest: 'CHEST DAY', ianLegs: 'LEG DAY', ianShoulder: 'SHOULDER DAY', ianBack: 'BACK DAY' };
+/** 进入下一周: once every session of the week is done (in the app or marked), skip the wait for the next week. */
+function nextWeekHtml(t) {
+  if (!weekComplete(state, t.date)) return '';
+  const U = unitOf();
+  const n = progOf().weeks;
+  const nw = (t.pos.week % n) + 1;
+  const name = `第 ${nw} ${U}「${esc(weekName(nw))}」${t.pos.week === n ? '（新一轮）' : ''}`;
+  const dry = advanceWeek({ ...state, weekAdjust: (state.weekAdjust || []).slice() }, t.date);
+  if (!dry) return `<div class="card next-week"><b>本${U}训练全部完成 🎉</b><p class="muted">明天自动进入${name}。</p></div>`;
+  const tomorrow = dayDiff(t.date, dry.start) > 0;
+  return `<div class="card next-week"><b>本${U}训练全部完成 🎉</b>
+    <p class="muted">不用等，${tomorrow ? '今天已经练过了，明天' : '今天'}就可以开始${name}。</p>
+    <button class="btn block" data-act="next-week">进入下一${U} →</button></div>`;
+}
 function homeToday(t) {
   if (!t.pos) {
     return `<div class="card hero"><div class="muted">计划还没开始</div><h2>${fmtDate(parseKey(state.startDate))}开始第 1 ${unitOf()}</h2>
@@ -133,6 +147,7 @@ function homeToday(t) {
     <div class="row between"><span class="tag">${esc(progOf().short)} · 第 ${pos.cycle + 1} 轮 · 第 ${pos.week}/${progOf().weeks} ${unitOf()}</span></div>
     <h2>${esc(weekName(pos.week))}</h2>
     <div class="pills">${order.map((s, i) => { const st = status(s); return `<span class="pill ${st}">${st === 'app' ? '✓ ' : st === 'offline' ? '📝 ' : ''}${sessionName(s, pos.week)}${!isMike() && pos.week === 12 && i === 3 ? '(可选)' : ''}</span>`; }).join('')}</div></div>`;
+  html += nextWeekHtml(t);
 
   const yesterday = doneOn(state, addDays(t.date, -1));
   let warn = '';
@@ -229,6 +244,14 @@ function bindHome() {
     } else if (ds.act === 'start') { wkMode = 'plan'; currentView = 'workout'; render(); window.scrollTo(0, 0); return; }
     else if (ds.act === 'friends') return openFriends();
     else if (ds.act === 'start-now') state.startDate = dateKey(mondayOf(t.date));
+    else if (ds.act === 'next-week') {
+      const r = advanceWeek(state, t.date);
+      if (!r) return;
+      const wk = (r.wa % progOf().weeks) + 1;
+      toast(`已进入第 ${wk} ${unitOf()}「${weekName(wk)}」${dayDiff(t.date, r.start) ? '，明天开始练' : ''}`);
+      save(); render(); syncPushSoon();
+      return;
+    }
     else return;
     save(); render();
   });
