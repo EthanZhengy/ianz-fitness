@@ -24,6 +24,7 @@ function render() {
   }
   if (restTimer) drawRest();
   syncWorkoutHistory();
+  saveSession();
   updateBadge();
 }
 
@@ -53,7 +54,11 @@ if ('serviceWorker' in navigator) {
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !wiz) { scheduleReminders(); render(); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveSession();
+  else if (!wiz) { scheduleReminders(); render(); }
+});
+addEventListener('pagehide', saveSession);
 captureInvite();
 
 // Launch screen stays ~1.3 s from page start, then fades out
@@ -64,6 +69,7 @@ captureInvite();
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 450); }, off ? 0 : Math.max(0, 1300 - performance.now()));
 })();
 cloudInit();
+restoreSession();
 render();
 handleDeepLink();
 setTimeout(syncPushSoon, 4000); // refresh the server's reminder schedule on every launch

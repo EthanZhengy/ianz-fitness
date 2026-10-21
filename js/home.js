@@ -581,8 +581,32 @@ function startRest(sec, opts = {}) {
   restTimer = { end: Date.now() + sec * 1000, total: sec, rk: opts.rk || null, warm: !!opts.warm, name: opts.name || '' };
   restTimer.iv = setInterval(drawRest, 250);
   drawRest();
+  saveSession();
 }
-function stopRest() { if (restTimer) clearInterval(restTimer.iv); restTimer = null; restMode = ''; $('#rest').hidden = true; }
+function stopRest() { if (restTimer) clearInterval(restTimer.iv); restTimer = null; restMode = ''; $('#rest').hidden = true; saveSession(); }
+
+/*
+ * Phones often kill a web app in the background (watching a video between sets) and reload it on return.
+ * Keep the screen and the rest timer in localStorage so the app comes back where it was, timer still counting.
+ */
+const SESSION_KEY = 'ianz-session';
+function saveSession() {
+  try {
+    const rest = restTimer && { end: restTimer.end, total: restTimer.total, rk: restTimer.rk, warm: restTimer.warm, name: restTimer.name };
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ at: Date.now(), day: dateKey(new Date()), view: currentView, wkMode, rest }));
+  } catch { /* private mode */ }
+}
+function restoreSession() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { /* ignore */ }
+  if (!s || s.day !== dateKey(new Date()) || Date.now() - s.at > 3 * 3600e3) return;
+  if (s.view === 'workout' && state.onboarded) { currentView = 'workout'; wkMode = s.wkMode === 'free' ? 'free' : 'plan'; }
+  const r = s.rest;
+  if (!r) return;
+  if (r.end > Date.now()) {
+    restTimer = { ...r, iv: setInterval(drawRest, 250) };
+  } else if (Date.now() - r.end < 15 * 60e3) setTimeout(() => toast('⏰ 休息时间已经到了，开始下一组'), 600);
+}
 
 /* On the workout screen the timer is a bar; elsewhere (or after 缩小) it is a round bubble you can drag anywhere. */
 let restMini = null; // null = automatic
@@ -978,7 +1002,7 @@ function bindWorkout() {
         toast(`⏱ 已记住：${restTimer.name || '这个动作'}以后休息 ${fmtRest(pref)}`);
       }
       if (restTimer.end <= Date.now()) { stopRest(); return toast('⏰ 休息结束，开始下一组'); }
-      drawRest();
+      drawRest(); saveSession();
     }
   });
 }
