@@ -37,8 +37,9 @@ const legs6 = E.buildSession(st, day(6, 2), 'pplLegs', {});
 const legPress = legs6.blocks.find((b) => b.ex && b.ex.name === '腿举');
 assert.ok(legPress.deload);
 assert.strictEqual(S.blockRows({ ...st, lastW: { [legPress.ex.id]: { w: 200, r: 10 } } }, { sx: {} }, 'pplLegs', legPress)[0].w, 160);
-// round 2: bench +2.5, squat +5
-assert.strictEqual(main(E.buildSession(st, day(7, 0), 'pplPush', {})).rows[0].w, E.roundTo(102.5 * 0.7, 2.5));
+// round 2: no automatic increase — the same 1RM until the user enters a new one
+assert.strictEqual(main(E.buildSession(st, day(7, 0), 'pplPush', {})).rows[0].w, E.roundTo(100 * 0.7, 2.5));
+assert.ok(E.manualMaxes(st));
 
 // 自动顺延: missed days push the plan back; a cycle needs push, pull and legs, then one rest day
 const sh = { ...st, autoShift: true, logs: {} };

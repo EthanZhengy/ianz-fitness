@@ -84,9 +84,9 @@ st.accLog[row.ex.id] = { last: { date: '2026-10-19', w: 30, reps: [12, 12, 12] }
 const next = E.buildSession(st, day(7), 'cp_test1_d0', {}).blocks.find((b) => b.key === 'e1');
 assert.deepStrictEqual(next.rows.map((r) => [r.w, r.reps]), [[32, 8], [32, 8], [32, 8]]);
 
-// next round: +2.5kg bench, +5kg squat
-assert.strictEqual(E.cpMax(st, 1, 'bench'), 102.5);
-assert.strictEqual(E.cpMax(st, 1, 'squat'), 145);
+// next round: the same 1RM (the user updates it)
+assert.strictEqual(E.cpMax(st, 1, 'bench'), 100);
+assert.strictEqual(E.cpMax(st, 1, 'squat'), 140);
 
 // rotation plan: in order, 自动顺延
 const rot = E.normalizePlanDef({ ...raw, mode: 'rotation', restAfter: 1 }, 'cp_rot');

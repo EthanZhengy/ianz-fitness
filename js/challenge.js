@@ -50,7 +50,7 @@ function programCardHtml(cycle) {
     return `<div class="card"><h2>${lifts.length ? `主项 1RM（第 ${cycle + 1} 轮）` : '计划内容'}</h2>
       ${lifts.map((l) => `<div class="kv"><span>${LIFT_NAMES[l]} 1RM</span><b>${fmtW(roundTo(cpMax(state, cycle, l), 0.5))}kg</b></div>`).join('')}
       ${def.days.map((d) => `<div class="kv"><span>${esc(d.name)}</span><b class="small">${d.ex.map((e) => esc(e.name)).join('、')}</b></div>`).join('')}
-      <p class="muted">${def.desc ? `${esc(def.desc)} ` : ''}${lifts.length ? `按 1RM 百分比的动作每练完一轮上肢 +2.5kg、下肢 +5kg。` : ''}写着次数范围的辅助动作按双进阶：每组都做到上限，下次自动加重。</p>
+      <p class="muted">${def.desc ? `${esc(def.desc)} ` : ''}${lifts.length ? '按 1RM 百分比的动作不会自动加 1RM，练完一轮后按你现在的水平重新填写。' : ''}写着次数范围的辅助动作按双进阶：每组都做到上限，下次自动加重。</p>
       ${progOf().flex ? shiftOptHtml('所有训练日都练完才进入下一轮的下一周。') : ''}
       <div class="row wrap">${lifts.length ? '<button class="btn small ghost" data-act="edit-lifts">修改 1RM</button>' : ''}
         <button class="btn small ghost" data-act="plan-share">分享计划文件</button>
@@ -74,7 +74,7 @@ function programCardHtml(cycle) {
       <div class="kv"><span>杠铃深蹲 1RM</span><b>${fmtW(roundTo(pplMax(state, cycle, 'squat'), 0.5))}kg</b></div>
       <table class="tm"><tr><th>循环</th><th>主项</th><th>卧推</th><th>深蹲</th></tr>
       ${PPL_CYCLES.map((c, i) => `<tr><td>${'一二三四五六'[i]}</td><td>${c.main[0]}×${c.main[1]} @${c.main[2]}%</td><td>${fmtW(roundTo(pplMax(state, cycle, 'bench') * c.main[2] / 100, state.plateInc || 2.5))}</td><td>${fmtW(roundTo(pplMax(state, cycle, 'squat') * c.main[2] / 100, state.plateInc || 2.5))}</td></tr>`).join('')}</table>
-      <p class="muted">推 → 拉 → 腿 → 休，四天一循环。辅助动作 3 组 × 8–12 次（RPE 8），第六个循环减载。练完 6 个循环，下一轮卧推 +2.5kg、深蹲 +5kg。</p>
+      <p class="muted">推 → 拉 → 腿 → 休，四天一循环。辅助动作 3 组 × 8–12 次（RPE 8），第六个循环减载。1RM 不会自动加，练完 6 个循环后按你现在的水平重新填写。</p>
       ${shiftOptHtml('推、拉、腿都练完才进入下一个循环。')}
       <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改 1RM</button>
         ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">这个循环没练完，整体顺延</button>
@@ -118,7 +118,7 @@ function renderChallenge() {
         <circle class="val" cx="50" cy="50" r="42" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C * (1 - weeksDone / P.weeks)).toFixed(1)}" transform="rotate(-90 50 50)"/></svg>
         <div class="ring-txt"><b>${weeksDone}</b><small>/${P.weeks} ${unitOf()}</small></div></div></div>
       <div class="grow"><div class="muted">第 ${cycle + 1} 轮</div><h2>${esc(P.name)}</h2>
-        <label class="week-pick">当前在 <select data-setweek>${Array.from({ length: P.weeks }, (_, i) => `<option value="${i + 1}" ${pos && pos.week === i + 1 ? 'selected' : ''}>第 ${i + 1} ${unitOf()} · ${esc(weekName(i + 1))}</option>`).join('')}</select></label>
+        <label class="week-pick">当前在 <select data-setround>${Array.from({ length: Math.max(cycle + 1, 2) }, (_, i) => `<option value="${i}" ${i === cycle ? 'selected' : ''}>第 ${i + 1} 轮</option>`).join('')}</select> <select data-setweek>${Array.from({ length: P.weeks }, (_, i) => `<option value="${i + 1}" ${pos && pos.week === i + 1 ? 'selected' : ''}>第 ${i + 1} ${unitOf()} · ${esc(weekName(i + 1))}</option>`).join('')}</select></label>
         ${pos ? '' : `<div class="muted">${fmtDate(parseKey(state.startDate))} 开始</div>`}
         <div class="muted">${isCustom() ? `${progOf().def.days.map((d) => esc(d.name)).join(' · ')}${progOf().flex ? ' · 按顺序轮换' : ''}` : isIan() ? '胸 → 腿 → 肩 → 背 · 5/3/1 + 双进阶' : isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
     ${programCardHtml(cycle)}`;
@@ -153,6 +153,16 @@ function openProgramPicker() {
 
 function bindChallenge() {
   $('#view-challenge').addEventListener('change', (e) => {
+    if (e.target.dataset.setround !== undefined) {
+      const r = Number(e.target.value);
+      const pos = position(state, new Date());
+      const wk = pos ? pos.week : 1;
+      if (pos && pos.cycle === r) return;
+      if (!confirm(`把当前进度调到第 ${r + 1} 轮第 ${wk} ${unitOf()}？\n\n已有的训练记录都保留。`)) { render(); return; }
+      setCurrentWeek(state, wk, new Date(), r);
+      save(); render(); syncPushSoon();
+      return toast(`已调整到第 ${r + 1} 轮`);
+    }
     if (e.target.dataset.setweek !== undefined) {
       const w = Number(e.target.value);
       const pos = position(state, new Date());

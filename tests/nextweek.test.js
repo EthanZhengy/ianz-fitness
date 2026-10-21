@@ -54,3 +54,22 @@ r = E.advanceWeek(st, d('2026-10-15'));
 const p = E.position(st, d('2026-10-15'));
 assert.deepStrictEqual([p.cycle, p.week], [1, 1]);
 console.log('next week tests passed');
+
+// 调回第一轮: round 2 week 3 → round 1 week 3
+{
+  const s = { ...base(), program: 'ppl', startDate: '2026-09-20', schedule: [0, 1, 2], autoShift: false };
+  const today = d('2026-10-20');
+  const before = E.position(s, today);
+  assert.strictEqual(before.cycle, 1, 'calendar 4-day cycles: in round 2');
+  E.setCurrentWeek(s, before.week, today, 0);
+  const after = E.position(s, today);
+  assert.deepStrictEqual([after.cycle, after.week], [0, before.week]);
+  // auto-shift too
+  const s2 = { ...base(), program: 'ppl', startDate: '2026-10-01', schedule: [0, 1, 2] };
+  E.setCurrentWeek(s2, 6, today, 0); E.setCurrentWeek(s2, 6, d('2026-10-21'));
+  E.setCurrentWeek(s2, 2, d('2026-10-22'), 1);
+  assert.deepStrictEqual([E.position(s2, d('2026-10-22')).cycle, E.position(s2, d('2026-10-22')).week], [1, 2]);
+  E.setCurrentWeek(s2, 2, d('2026-10-22'), 0);
+  assert.deepStrictEqual([E.position(s2, d('2026-10-22')).cycle, E.position(s2, d('2026-10-22')).week], [0, 2]);
+}
+console.log('round tests passed');

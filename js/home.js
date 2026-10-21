@@ -118,6 +118,14 @@ function renderHome() {
 }
 
 const DAY_EN = { press: 'PRESS DAY', deadlift: 'DEADLIFT DAY', bench: 'BENCH DAY', squat: 'SQUAT DAY', mike1: 'PUSH DAY · 1', mike2: 'PUSH DAY · 2', mikeTest: 'TEST DAY', pplPush: 'PUSH DAY', pplPull: 'PULL DAY', pplLegs: 'LEG DAY', ianChest: 'CHEST DAY', ianLegs: 'LEG DAY', ianShoulder: 'SHOULDER DAY', ianBack: 'BACK DAY' };
+/** Plans without automatic progression: at the start of a new round, ask for the new maxes (once per round). */
+const roundKey = (t) => `${progOf().id}:${t.pos.cycle}`;
+function newRoundHtml(t) {
+  if (!manualMaxes() || !t.pos.cycle || t.pos.week !== 1 || (state.roundAsked || {})[roundKey(t)]) return '';
+  return `<div class="card next-week"><b>第 ${t.pos.cycle + 1} 轮开始了 💪</b>
+    <p class="muted">这个计划不会自动加重量。上一轮练完了，按你现在的水平重新填一下 1RM，这一轮的重量就按新的算。</p>
+    <div class="row"><button class="btn grow" data-act="round-max">填写新的 1RM</button><button class="btn ghost grow" data-act="round-keep">不用改</button></div></div>`;
+}
 /** 进入下一周: once every session of the week is done (in the app or marked), skip the wait for the next week. */
 function nextWeekHtml(t) {
   if (!weekComplete(state, t.date)) return '';
@@ -147,7 +155,7 @@ function homeToday(t) {
     <div class="row between"><span class="tag">${esc(progOf().short)} · 第 ${pos.cycle + 1} 轮 · 第 ${pos.week}/${progOf().weeks} ${unitOf()}</span></div>
     <h2>${esc(weekName(pos.week))}</h2>
     <div class="pills">${order.map((s, i) => { const st = status(s); return `<span class="pill ${st}">${st === 'app' ? '✓ ' : st === 'offline' ? '📝 ' : ''}${sessionName(s, pos.week)}${!isMike() && pos.week === 12 && i === 3 ? '(可选)' : ''}</span>`; }).join('')}</div></div>`;
-  html += nextWeekHtml(t);
+  html += nextWeekHtml(t) + newRoundHtml(t);
 
   const yesterday = doneOn(state, addDays(t.date, -1));
   let warn = '';
@@ -244,7 +252,11 @@ function bindHome() {
     } else if (ds.act === 'start') { wkMode = 'plan'; currentView = 'workout'; render(); window.scrollTo(0, 0); return; }
     else if (ds.act === 'friends') return openFriends();
     else if (ds.act === 'start-now') state.startDate = dateKey(mondayOf(t.date));
-    else if (ds.act === 'next-week') {
+    else if (ds.act === 'round-max' || ds.act === 'round-keep') {
+      state.roundAsked = { ...(state.roundAsked || {}), [roundKey(t)]: true };
+      save();
+      if (ds.act === 'round-max') return startWizard(true, null, 'lifts');
+    } else if (ds.act === 'next-week') {
       const r = advanceWeek(state, t.date);
       if (!r) return;
       const wk = (r.wa % progOf().weeks) + 1;

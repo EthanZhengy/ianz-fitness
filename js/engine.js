@@ -138,12 +138,12 @@ function cycleRange(st, weekAbs) {
 function weekSkipped(st, weekAbs, end) {
   return (cur(st).weekAdjust || []).some((a) => a.wa > weekAbs && dateKey(end) < a.date);
 }
-/** 调整当前周: put today in week `week` (1-based) of the current round. */
-function setCurrentWeek(st, week, today = new Date()) {
+/** 调整当前周: put today in week `week` (1-based) of the current round, or of round `round` (0-based). */
+function setCurrentWeek(st, week, today = new Date(), round) {
   const P = periodOf(st);
   const n = progOf(st).weeks;
   const pos = position(st, today);
-  const cycle = pos ? pos.cycle : 0;
+  const cycle = round ?? (pos ? pos.cycle : 0);
   const wa = cycle * n + week - 1;
   const key = dateKey(today);
   if (!pos) st.startDate = dateKey(P === 7 ? mondayOf(today) : today);
@@ -187,6 +187,8 @@ function advanceWeek(st, today = new Date()) {
   return { wa, start };
 }
 const slotName = (st, date) => (periodOf(st) === 7 ? WEEKDAYS[weekdayIdx(date)] : `循环第 ${slotOf(st, date) + 1} 天`);
+/** Plans whose maxes never change by themselves (no test week): after a round the user enters new ones. */
+const manualMaxes = (st) => isPPL(st) || isCustom(st);
 const isTestWeek = (week, st) => ['531', 'mike', 'ian'].includes(progOf(st).id) && week === progOf(st).weeks;
 function orderFor(week, st) {
   if (isCustom(st)) return progOf(st).def.days.map((_, i) => `${progOf(st).id}_d${i}`);
@@ -664,10 +666,9 @@ function buildIan(st, date, pos, sid, opts = {}) {
 }
 
 /* ---------- 三分化 5+1（推 / 拉 / 腿） ---------- */
-/** Bench / squat 1RM for a round of the plan: what was entered, +2.5kg / +5kg for every finished round of 6 cycles. */
+/** Bench / squat 1RM: what was entered. No automatic increase between rounds — after a round the user enters the new maxes. */
 function pplMax(st, round, lift) {
-  const base = (st.ppl && st.ppl[`${lift}1RM`]) || (st.lifts[lift] && st.lifts[lift].oneRM) || 0;
-  return base + Math.max(0, round) * (lift === 'squat' ? 5 : 2.5);
+  return (st.ppl && st.ppl[`${lift}1RM`]) || (st.lifts[lift] && st.lifts[lift].oneRM) || 0;
 }
 function buildPPL(st, date, pos, sid, opts = {}) {
   const C = PPL_CYCLES[pos.week - 1];
@@ -792,7 +793,6 @@ function buildMike(st, date, pos, sid, opts = {}) {
 const CP_CATS = ['chest', 'back', 'leg', 'shoulder', 'bi', 'tri', 'glute', 'calf', 'grip', 'core', 'custom'];
 const CP_LOADS = ['pct', 'double', 'kg', 'free'];
 const CP_EQUIP = ['bb', 'smith', 'db', 'cable', 'machine', 'press', 'bw'];
-const CP_INC = { bench: 2.5, press: 2.5, squat: 5, deadlift: 5 };
 const isCustomProg = (id) => /^cp_[a-z0-9]+$/.test(String(id));
 const isCustom = (st) => !!progOf(st).custom;
 const cpDayIdx = (sid) => Number(String(sid).slice(String(sid).lastIndexOf('_d') + 2));
@@ -865,8 +865,9 @@ function registerCustomPrograms(st) {
     });
   });
 }
+/** 1RM for percentage work: the entered value, the same every round (the user updates it after a round). */
 function cpMax(st, round, lift) {
-  return ((st.lifts[lift] && st.lifts[lift].oneRM) || 0) + Math.max(0, round) * (CP_INC[lift] || 2.5);
+  return (st.lifts[lift] && st.lifts[lift].oneRM) || 0;
 }
 /** The sets an exercise does in `week`: the plan entry listing that week, else the entry without weeks (every week). */
 function cpSets(ex, week) {
@@ -1004,7 +1005,7 @@ function sessionSummary(st, date, sessionId, readiness) {
 
 if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
-    position, recommend, doneList, accEditable, accEditFor, applyAccEdits, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
+    position, recommend, manualMaxes, doneList, accEditable, accEditFor, applyAccEdits, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
     progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike,
     normalizePlanDef, registerCustomPrograms, buildCustom, cpMax, cpSets, planLifts, isCustom, isCustomProg, CP_DEFAULT_DAYS };
