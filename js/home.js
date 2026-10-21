@@ -863,7 +863,7 @@ function bindWorkout() {
       exh.tab = 'hist';
       return openExHistory(blockName(bb), (bb.ex && bb.ex.img) || bb.img, (bb.ex && bb.ex.cue) || bb.note);
     }
-    else if (ds.act === 'add-extra') return openPicker();
+    else if (ds.act === 'add-extra') { pick.target = null; return openPicker(); }
     else if (ds.swap) { swapQ = ''; return openSwap(ds.swap); }
     else if (ds.act === 'done') {
       const w = workoutStats(sessionWithExtras(state, t.date, sid, log), log, sid);
@@ -920,6 +920,7 @@ function bindWorkout() {
       else if (ds.pick) {
         const it = libraryItems().find((x) => x.id === ds.pick);
         if (it && pick.target === 'tpl') { pick.target = null; return tplPicked(it); }
+        if (it && pick.target === 'acc') { pick.target = null; return accPicked(it); }
         if (it) { addExtra(it); closeSheet(); render(); }
       }
     } else if (sheetCtx.type === 'swap') {

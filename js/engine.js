@@ -402,6 +402,53 @@ const READINESS = {
  * opts.readiness adjusts volume; opts.swaps overrides chosen accessories by block key.
  */
 function buildSession(st, date, sessionId, opts = {}) {
+  const s = buildSessionRaw(st, date, sessionId, opts);
+  return opts.raw ? s : applyAccEdits(st, date, sessionId, s);
+}
+
+/*
+ * 模板里改计划的辅助动作: state.accEdit[sid][blockKey] = versions, oldest first, each from a day on
+ * ({ since, hide } removes it · { since, reset } back to the plan · { since, id, name, img, cue, cat, kind, sets, reps }).
+ * Only accessories (sets blocks without a main lift) can be changed; earlier days keep what they were.
+ */
+const accEditable = (b) => b.type === 'sets' && !b.lift && !b.tpl && !b.extra;
+function accEditFor(st, sid, key, date) {
+  const list = st.accEdit && st.accEdit[sid] && st.accEdit[sid][key];
+  if (!list) return null;
+  const k = dateKey(date);
+  let hit = null;
+  list.forEach((e) => { if (e.since <= k) hit = e; });
+  return hit && !hit.reset ? hit : null;
+}
+function applyAccEdits(st, date, sid, s) {
+  if (!s || s.test || !st.accEdit || !st.accEdit[sid]) return s;
+  s.blocks = s.blocks.flatMap((b) => {
+    const e = accEditable(b) && accEditFor(st, sid, b.key, date);
+    if (!e) return [b];
+    if (e.hide) return [];
+    const nb = { ...b, edited: true };
+    if (e.sets) nb.sets = e.sets;
+    if (e.reps) nb.reps = String(e.reps);
+    if (e.name) {
+      nb.title = `${b.title.includes(' · ') ? b.title.split(' · ')[0] : '辅助'} · ${e.name}`;
+      nb.ex = { id: e.id, name: e.name, img: e.img || undefined, cue: e.cue || '' };
+      nb.cat = e.cat || b.cat;
+      delete nb.ianSlot; delete nb.slot; delete nb.w; delete nb.img;
+    }
+    const range = /^(\d+)\s*[-–]\s*(\d+)$/.exec(nb.reps);
+    if ((b.dp || b.ianSlot) && range) { // double progression continues, kept per exercise and rep range
+      const lo = Number(range[1]), hi = Math.max(lo, Number(range[2]));
+      if (e.name) nb.ex.id = `acc_${e.id}_${lo}-${hi}`;
+      const kind = e.kind || (/_(bb|smith|db|cable|machine|press|bw)_\d/.exec(b.ex ? b.ex.id : '') || [])[1] || 'bb';
+      const plan = accPlan(st, nb.ex.id, { sets: nb.sets, lo, hi }, kind, date, !!b.deload);
+      Object.assign(nb, { rows: plan.rows, sets: plan.sets, dp: true, note: plan.note });
+    } else if (b.rows) { delete nb.rows; delete nb.dp; } // weight: what was used last time
+    return [nb];
+  });
+  return s;
+}
+
+function buildSessionRaw(st, date, sessionId, opts = {}) {
   const pos = position(st, date);
   if (!pos || !SESSIONS[sessionId]) return null;
   if (isMike(st)) return programOfSession(sessionId) === 'mike' ? buildMike(st, date, pos, sessionId, opts) : null;
@@ -957,7 +1004,7 @@ function sessionSummary(st, date, sessionId, readiness) {
 
 if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
-    position, recommend, doneList, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
+    position, recommend, doneList, accEditable, accEditFor, applyAccEdits, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
     progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike,
     normalizePlanDef, registerCustomPrograms, buildCustom, cpMax, cpSets, planLifts, isCustom, isCustomProg, CP_DEFAULT_DAYS };

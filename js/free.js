@@ -203,7 +203,7 @@ function openTplDetail(sid) {
   const ref = sessionRef(state, t.date, sid);
   const desc = (e) => (e.follow ? `跟随主项强度 · 1RM ≈ ${fmtW(Math.round(ref * e.ratio * 2) / 2)}kg` : `${e.sets} 组 × ${e.reps} 次`);
   openSheet(sessionName(sid, t.pos.week), `${day ? `<p class="muted">自定义训练日 · 跟随动作参考「${esc(sessionName(day.ref, t.pos.week))}」的主项强度 · 不计入每周必练</p>`
-    : `<h3>计划动作</h3><div class="muted">${sess.blocks.map((b) => esc(b.title.replace(/^.*· /, ''))).join('、')}</div>`}
+    : `<h3>计划动作 <span class="muted small">（辅助动作可以替换、改组数次数或删除）</span></h3>${planExRows(sid, t)}`}
     <h3>${day ? '训练日的动作' : '我加的动作'} <span class="muted small">（勾选今天要练的）</span></h3>
     ${mine.map((e) => `<div class="tpl-ex"><button class="chk${sel.includes(e.k) ? ' on' : ''}" data-tpltog="${e.k}" aria-label="今天练${esc(e.name)}">✓</button>
       ${e.img ? `<img src="${exImgUrl(e.img)}" alt="">` : ''}<div class="grow"><b>${esc(e.name)}</b><div class="muted small">${desc(e)}</div></div>
@@ -211,6 +211,65 @@ function openTplDetail(sid) {
     <button class="btn ghost block" data-tpladd="${sid}">＋ 添加动作到模板</button>
     <button class="btn block big" data-tplgo="${sid}">开始训练</button>
     ${day ? `<div class="row"><button class="btn ghost grow" data-tplday="${sid}">编辑训练日</button><button class="btn ghost grow" data-tplact="publish-one" data-sid="${sid}">发布为方案</button></div>` : ''}`, { type: 'tpl', sid, reopen: () => openTplDetail(sid) });
+}
+
+/** The plan's own exercises of a day: main lifts as they are, accessories with 改 (state.accEdit, see engine.js). */
+function planExRows(sid, t) {
+  const raw = buildSession(state, t.date, sid, { raw: true });
+  if (!raw) return '';
+  return raw.blocks.map((b) => {
+    const name = b.ex ? b.ex.name : b.title.replace(/^.*· /, '');
+    if (!accEditable(b)) return `<div class="tpl-ex plan"><div class="grow"><b>${esc(name)}</b><div class="muted small">主项 · 按计划</div></div></div>`;
+    const e = accEditFor(state, sid, b.key, t.date);
+    if (e && e.hide) return `<div class="tpl-ex plan off"><div class="grow"><b>${esc(name)}</b><div class="muted small">已从计划删除</div></div><button class="link" data-accrestore="${b.key}">恢复</button></div>`;
+    const img = (e && e.name ? e.img : b.ex && b.ex.img) || b.img;
+    return `<div class="tpl-ex plan">${img ? `<img src="${exImgUrl(img)}" alt="">` : ''}<div class="grow"><b>${esc(e && e.name ? e.name : name)}</b>
+      <div class="muted small">${e ? `已修改${e.name ? `（原：${esc(name)}）` : ''} · ` : ''}${(e && e.sets) || b.sets} 组 × ${esc((e && e.reps) || b.reps)}</div></div>
+      <button class="link" data-accedit="${b.key}">修改</button></div>`;
+  }).join('');
+}
+let accDraft = null;
+function openAccForm(sid, key) {
+  const t = todayInfo();
+  const b = buildSession(state, t.date, sid, { raw: true }).blocks.find((x) => x.key === key);
+  if (!b) return;
+  const orig = b.ex ? b.ex.name : b.title.replace(/^.*· /, '');
+  if (!accDraft || accDraft.sid !== sid || accDraft.key !== key) {
+    const e = accEditFor(state, sid, key, t.date) || {};
+    accDraft = { sid, key, id: e.id || null, name: e.name || '', img: e.img || null, cue: e.cue || '', cat: e.cat || '', kind: e.kind || '', sets: e.sets || b.sets, reps: e.reps || b.reps };
+  }
+  const d = accDraft;
+  const edited = !!accEditFor(state, sid, key, t.date);
+  openSheet(`修改计划动作 · ${orig}`, `<label>动作</label>
+    <div class="row tf-name">${(d.img || (!d.name && b.ex && b.ex.img)) ? `<img src="${exImgUrl(d.img || b.ex.img)}" alt="">` : ''}<b class="grow">${esc(d.name || orig)}</b><button class="btn small ghost" data-accpick>从动作库换一个</button></div>
+    ${d.name ? `<button class="link" data-accorig>换回原动作「${esc(orig)}」</button>` : ''}
+    <div class="grid2"><div><label>组数</label><input id="acSets" type="number" inputmode="numeric" min="1" max="10" value="${esc(d.sets)}"></div>
+      <div><label>次数（范围如 8-12）</label><input id="acReps" maxlength="12" value="${esc(d.reps)}"></div></div>
+    <p class="muted">${b.dp || b.ianSlot ? '写成次数范围会继续按双进阶自动加重，每个动作的进度分开记。' : '重量在训练时填写，下次会自动带上上次的重量。'}从今天起每次练${esc(sessionName(sid, t.pos.week))}都用这个设置，以前的训练记录不变。</p>
+    <button class="btn block" data-accsave>保存</button>
+    <div class="row"><button class="btn danger grow" data-acchide>从计划删除</button>${edited ? '<button class="btn ghost grow" data-accreset>恢复原计划</button>' : ''}</div>`,
+    { type: 'accform', sid, key, reopen: () => openAccForm(sid, key) });
+}
+function readAccForm() {
+  if (!accDraft || !$('#acSets')) return;
+  accDraft.sets = Math.min(10, Math.max(1, Number($('#acSets').value) || accDraft.sets));
+  accDraft.reps = $('#acReps').value.trim().replace(/\s+/g, '') || accDraft.reps;
+}
+/** Save a version of a plan accessory from today on (replacing today's earlier version). */
+function putAccEdit(sid, key, v) {
+  const ed = state.accEdit = state.accEdit || {};
+  const day = ed[sid] = ed[sid] || {};
+  const since = dateKey(new Date());
+  day[key] = (day[key] || []).filter((x) => x.since < since).concat({ since, ...v });
+  accDraft = null;
+  save(); render();
+  openTplDetail(sid);
+}
+const EQ_KIND = { dumbbell: 'db', cable: 'cable', machine: 'machine', body: 'bw' };
+function accPicked(it) {
+  readAccForm();
+  Object.assign(accDraft, { id: it.id, name: it.name.replace(/（.*）/, ''), img: it.img || null, cue: it.cue || (it.s && it.s[0]) || '', cat: exCat(it) || '', kind: EQ_KIND[itemEq(it)] || 'bb' });
+  openAccForm(accDraft.sid, accDraft.key);
 }
 
 /* Add / rename a custom training day (e.g. 第三推) */
@@ -416,6 +475,8 @@ function bindFree() {
       if (ds.tpl) { if (tplSort) return; tplSel = {}; return openTplDetail(ds.tpl); }
       if (ds.tpladd) { tplDraft = null; return openTplForm(ds.tpladd, null); }
       if (ds.tpledit) return openTplForm(sheetCtx.sid, ds.tpledit);
+      if (ds.accedit) { accDraft = null; return openAccForm(sheetCtx.sid, ds.accedit); }
+      if (ds.accrestore) return putAccEdit(sheetCtx.sid, ds.accrestore, { reset: true });
       if (ds.tpltog) { toggle(tplSelected(sheetCtx.sid), ds.tpltog); return refreshSheet(); }
       if (!ds.tplgo) return;
       const sid = ds.tplgo;
@@ -426,6 +487,23 @@ function bindFree() {
       state.tplLastPick[sid] = tplSelected(sid).slice();
       wkMode = 'plan'; save(); closeSheet();
       currentView = 'workout'; render(); window.scrollTo(0, 0);
+    } else if (sheetCtx.type === 'accform') {
+      const { sid, key } = sheetCtx;
+      if (ds.accpick !== undefined) {
+        readAccForm(); pick.target = 'acc'; pick.q = '';
+        const ob = buildSession(state, todayInfo().date, sid, { raw: true }).blocks.find((x) => x.key === key);
+        const c = ob && (ob.cat || exCat(ob.ex || { name: ob.title }));
+        if (c && LIB_CATS.some(([k]) => k === c)) pick.cat = c; // start in the same muscle group
+        return openPicker();
+      }
+      if (ds.accorig !== undefined) { readAccForm(); Object.assign(accDraft, { id: null, name: '', img: null, cue: '', cat: '', kind: '' }); return refreshSheet(); }
+      if (ds.accreset !== undefined) return putAccEdit(sid, key, { reset: true });
+      if (ds.acchide !== undefined) { if (confirm('从计划里删除这个动作？以后不再安排，随时可以恢复。')) putAccEdit(sid, key, { hide: true }); return; }
+      if (ds.accsave !== undefined) {
+        readAccForm();
+        const { id, name, img, cue, cat, kind, sets, reps } = accDraft;
+        return putAccEdit(sid, key, name ? { id, name, img, cue, cat, kind, sets, reps } : { sets, reps });
+      }
     } else if (sheetCtx.type === 'tplform') {
       if (ds.tfmode) { readTplForm(); tplDraft.follow = ds.tfmode === 'follow'; return refreshSheet(); }
       if (ds.tfpick !== undefined) { readTplForm(); pick.target = 'tpl'; pick.q = ''; return openPicker(); }
