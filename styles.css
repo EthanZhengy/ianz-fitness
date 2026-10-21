@@ -1052,3 +1052,8 @@ body:has(.free-bar) .rest { z-index: 25; bottom: calc(84px + env(safe-area-inset
 .wk-finish { flex: none; padding: 8px 14px; font-size: 14px; }
 .next-week b { font-size: 17px; } .next-week p { margin: 6px 0 12px; }
 .tpl-ex.plan.off b { text-decoration: line-through; opacity: .55; }
+
+/* 分享 App */
+.share-app .share-qr { display: block; width: 200px; height: 200px; margin: 6px auto 10px; padding: 10px; background: #fff; border-radius: 18px; }
+.share-url { font-family: ui-monospace, Menlo, monospace; font-size: 13px; padding: 10px 12px; margin: 10px 0 14px; border-radius: 12px; background: var(--card-2); word-break: break-all; user-select: all; }
+.share-app .btn { margin-top: 8px; }

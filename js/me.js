@@ -169,7 +169,28 @@ const ME_PAGES = {
   account: ['账号与同步', 'cloud', () => accountCard()],
   look: ['外观、字体与语录', 'gear', () => lookHtml()],
   team: ['团队', 'info', () => teamHtml()],
+  share: ['分享 App', 'share', () => shareAppHtml()],
 };
+
+/* 分享 App: the public web address (GitHub Pages), a QR code of it (icons/share-qr.svg) and the system share sheet. */
+const APP_URL = 'https://ethanzhengy.github.io/ianz-fitness/';
+const SHARE_TEXT = 'Ianz Fitness：免费的力量训练计划 App，每一组都算好重量，还有饮食和训练记录。手机浏览器打开就能用，可以添加到主屏幕。';
+const myInviteUrl = () => (typeof social !== 'undefined' && social.me && social.me.friend_code ? `${APP_URL}?add=${social.me.friend_code}` : '');
+function shareAppHtml() {
+  const invite = myInviteUrl();
+  return `<div class="card share-app center"><img class="share-qr" src="icons/share-qr.svg" alt="Ianz Fitness 二维码" width="200" height="200">
+      <p class="muted">让朋友用手机相机扫一扫，或者把链接发给他</p>
+      <div class="share-url">${esc(APP_URL)}</div>
+      <button class="btn block" data-act="share-app">📤 分享给朋友</button>
+      <button class="btn block ghost" data-act="copy-app">复制链接</button>
+      ${invite ? '<button class="btn block ghost" data-act="share-invite">发送带我好友码的链接（打开后自动加我好友）</button>' : ''}</div>
+    <div class="card"><h2>朋友怎么安装</h2>
+      <p class="muted"><b>iPhone</b>：用 Safari 打开链接 → 底部「分享」→「添加到主屏幕」。<br><b>Android</b>：用 Chrome 打开 → 右上角菜单 →「安装应用」。<br>不安装直接在浏览器里用也可以，登录账号后数据会同步。</p></div>`;
+}
+async function shareApp(url) {
+  if (navigator.share) { try { await navigator.share({ title: 'Ianz Fitness', text: SHARE_TEXT, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  copyText(`${SHARE_TEXT}\n${url}`, '链接已复制，发给朋友吧');
+}
 
 /* 团队: each member is linked to their account by friend code, so the photo here is the one from their 社区 profile. */
 const TEAM = [
@@ -232,7 +253,7 @@ function renderMe() {
     ${banner}
     <div class="me-stats"><div><b>${n}</b><span>累计训练</span></div><div><b>${pos ? `${pos.week}<small>/${progOf().weeks}</small>` : '—'}</b><span>当前周</span></div><div><b>${p.weight}<small>kg</small></b><span>体重</span></div></div>
     <div class="menu">${row('body', `${p.height}cm · ${GOALS[p.goal].label}`)}${row('nutrition', dietOn() ? '' : '已隐藏')}${row('training')}${row('rm')}</div>
-    <div class="menu">${row('look', `${{ dark: '暗色调', light: '亮色调', auto: '跟随系统' }[(state.appearance || {}).mode || 'dark']}${quotesOn() ? '' : ' · 语录已关'}`)}${row('reminders', state.reminders.enabled ? '已开启' : '')}${row('data')}${row('install')}${row('team')}</div>
+    <div class="menu">${row('look', `${{ dark: '暗色调', light: '亮色调', auto: '跟随系统' }[(state.appearance || {}).mode || 'dark']}${quotesOn() ? '' : ' · 语录已关'}`)}${row('reminders', state.reminders.enabled ? '已开启' : '')}${row('data')}${row('install')}${row('share')}${row('team')}</div>
     ${cloud.user ? `<div class="menu">${row('account')}<button class="menu-row danger" data-act="logout"><span class="mi">${ICONS.logout}</span><span class="grow">退出登录</span></button></div>` : ''}
     <p class="muted center pad">Ianz Fitness · 版本 ${APP_VERSION} · <a href="plans.html">训练计划介绍</a> · <a href="privacy.html">隐私政策</a> · <a href="terms.html">用户协议</a></p>`;
 }
@@ -252,6 +273,9 @@ function bindMe() {
     }
     else if (b.dataset.teamUser) { comm.viewing = null; openUser(b.dataset.teamUser); }
     else if (b.dataset.act === 'me-view-profile') { comm.viewing = null; openUser(cloud.user.id); }
+    else if (b.dataset.act === 'share-app') shareApp(APP_URL);
+    else if (b.dataset.act === 'copy-app') copyText(APP_URL, '链接已复制');
+    else if (b.dataset.act === 'share-invite') shareApp(myInviteUrl());
   });
   root.addEventListener('input', (e) => {
     if (e.target.id !== 'rmW' && e.target.id !== 'rmR') return;
