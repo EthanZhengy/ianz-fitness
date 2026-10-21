@@ -1,4 +1,4 @@
-const CACHE = 'ianz-v58';
+const CACHE = 'ianz-v59';
 const ASSETS = ['./', 'index.html', 'styles.css', 'manifest.json', 'icons/icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
   'js/data.js', 'js/engine.js', 'js/stats.js', 'js/charts.js', 'js/core.js', 'js/quotes.js', 'assets/fonts/barlow-condensed-700.woff2', 'assets/fonts/barlow-condensed-800.woff2', 'js/vendor/supabase.js', 'js/config.js', 'js/cloud.js', 'js/wizard.js',
   'js/home.js', 'js/free.js', 'js/challenge.js', 'js/library.js', 'js/history.js', 'js/me.js', 'js/social.js', 'js/community.js', 'js/market.js', 'js/stories.js', 'js/push.js', 'js/photos.js', 'js/exhist.js', 'js/planimport.js', 'js/app.js'];
@@ -38,7 +38,8 @@ self.addEventListener('push', (e) => {
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data && e.data.text() }; }
   e.waitUntil(Promise.all([
     self.registration.showNotification(d.title || 'Ianz Fitness', {
-      body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: d.tag || d.title, data: { url: d.url || './' },
+      body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: d.tag || d.title, data: { url: d.url || './', rest: d.tag === 'rest' },
+      renotify: d.tag === 'rest', vibrate: d.tag === 'rest' ? [200, 100, 200] : undefined,
     }),
     self.navigator.setAppBadge ? self.navigator.setAppBadge(1).catch(() => {}) : null,
   ]));
@@ -49,7 +50,8 @@ self.addEventListener('notificationclick', (e) => {
   const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     const c = list[0];
-    if (c) return c.focus().then(() => (c.navigate ? c.navigate(url) : null)).catch(() => self.clients.openWindow(url));
+    // 休息结束: just bring the app back (it restores the workout itself); other reminders open their page
+    if (c) return c.focus().then(() => (c.navigate && !(e.notification.data && e.notification.data.rest) ? c.navigate(url) : null)).catch(() => self.clients.openWindow(url));
     return self.clients.openWindow(url);
   }));
 });

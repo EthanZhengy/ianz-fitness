@@ -55,7 +55,10 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') saveSession();
+  if (document.visibilityState === 'hidden') {
+    saveSession();
+    if (restTimer && restTimer.unsent) { restTimer.unsent = false; syncRestAlert(); } // left the app in the last seconds
+  }
   else if (!wiz) { scheduleReminders(); render(); }
 });
 addEventListener('pagehide', saveSession);

@@ -16,6 +16,12 @@
 4. SQL Editor 运行 `supabase/push_cron.sql`（先把 PASTE_CRON_SECRET_HERE 换成你的 CRON_SECRET）。
    自己生成一对 VAPID 密钥：`npx web-push generate-vapid-keys`，然后把公钥也更新到 `js/config.js`。
 
+### 休息结束提醒（在上面的基础上，一次性）
+组间休息时切到别的 App（刷视频）或手机把 App 关掉，休息时间到了也会推一条「⏰ 休息结束」到锁屏，点一下回到训练。
+1. 重新部署 `send-reminders`（粘贴最新的 `index.ts`）。
+2. SQL Editor 运行 `supabase/rest_alerts.sql`（同样把 PASTE_CRON_SECRET_HERE 换成你的 CRON_SECRET）。它每 5 秒检查一次，只有真的有到点的提醒时才调用函数。
+3. 手机上「我的 → 提醒设置 → 锁屏推送」开启后，下面的「休息结束提醒」默认打开，可单独关闭。
+
 ## 外观与语录（「暗夜铁馆」风格）
 
 - 「我的 → 外观与语录」：**暗色调 / 亮色调 / 跟随系统**，主题色可选荧光绿、燃橙、冰蓝、霓虹粉。

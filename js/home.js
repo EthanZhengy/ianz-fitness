@@ -581,9 +581,14 @@ function startRest(sec, opts = {}) {
   restTimer = { end: Date.now() + sec * 1000, total: sec, rk: opts.rk || null, warm: !!opts.warm, name: opts.name || '' };
   restTimer.iv = setInterval(drawRest, 250);
   drawRest();
-  saveSession();
+  saveSession(); syncRestAlert();
 }
-function stopRest() { if (restTimer) clearInterval(restTimer.iv); restTimer = null; restMode = ''; $('#rest').hidden = true; saveSession(); }
+function stopRest() {
+  const had = !!restTimer;
+  if (restTimer) clearInterval(restTimer.iv);
+  restTimer = null; restMode = ''; $('#rest').hidden = true; saveSession();
+  if (had && document.visibilityState === 'visible') syncRestAlert(); // skipped or finished in the app: no push needed
+}
 
 /*
  * Phones often kill a web app in the background (watching a video between sets) and reload it on return.
@@ -626,6 +631,8 @@ function drawRest() {
   const el = $('#rest');
   if (!restTimer) { el.hidden = true; return; }
   const left = Math.max(0, Math.round((restTimer.end - Date.now()) / 1000));
+  // watching the timer in the app near the end: the in-app alert is enough, take back the push
+  if (left <= 8 && !restTimer.unsent && document.visibilityState === 'visible') { restTimer.unsent = true; syncRestAlert(); }
   if (left === 0) {
     stopRest();
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -769,9 +776,14 @@ function bindBubbleDrag(el, key, enabled, onPlace) {
  */
 function syncWorkoutHistory() {
   const inWk = currentView === 'workout' && !wiz;
-  if (inWk && !(history.state && history.state.wk)) history.pushState({ wk: 1 }, '');
-  else if (!inWk && history.state && history.state.wk) { wkPopping = true; history.back(); }
+  if (inWk && !wkPopping && !(history.state && history.state.wk)) history.pushState({ wk: 1 }, '');
+  else if (!inWk && history.state && history.state.wk) {
+    // an entry kept from before a reload: going back would leave this page, so just clear it
+    if (history.state.boot) history.replaceState(null, '');
+    else if (!wkPopping) { wkPopping = true; history.back(); } // back() is async: never twice before it lands
+  }
 }
+if (history.state && history.state.wk) history.replaceState({ wk: 1, boot: true }, '');
 let wkPopping = false;
 function bindWorkoutBack() {
   addEventListener('popstate', () => {
@@ -1002,7 +1014,7 @@ function bindWorkout() {
         toast(`⏱ 已记住：${restTimer.name || '这个动作'}以后休息 ${fmtRest(pref)}`);
       }
       if (restTimer.end <= Date.now()) { stopRest(); return toast('⏰ 休息结束，开始下一组'); }
-      drawRest(); saveSession();
+      drawRest(); saveSession(); syncRestAlert();
     }
   });
 }

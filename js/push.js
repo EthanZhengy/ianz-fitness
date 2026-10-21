@@ -69,6 +69,28 @@ async function disablePush() {
   state.reminders.push = false; save(); render();
   toast('已关闭锁屏推送');
 }
+/*
+ * 休息结束提醒: while a rest timer runs, this device's alert waits in public.rest_alerts and the server pushes it
+ * when the time is up — so it arrives on the lock screen even if the phone closed the app (supabase/rest_alerts.sql).
+ */
+const restPushOn = () => !!(state.reminders && state.reminders.push && state.reminders.restPush !== false && cloud.user && pushSupported());
+let restAlertSeq = 0;
+async function syncRestAlert() {
+  if (!restPushOn()) return;
+  const seq = ++restAlertSeq;
+  const r = restTimer && !restTimer.unsent && restTimer.end > Date.now() + 3000 ? { end: restTimer.end, name: restTimer.name } : null;
+  try {
+    const sub = await currentSub();
+    if (!sub || seq !== restAlertSeq) return;
+    const q = cloud.client.from('rest_alerts');
+    if (r) {
+      const { error } = await q.upsert({ endpoint: sub.endpoint, user_id: cloud.user.id, fire_at: new Date(r.end).toISOString(),
+        title: '⏰ 休息结束', body: r.name ? `${r.name.slice(0, 40)} · 开始下一组` : '开始下一组' });
+      if (error && isMissingTable(error)) state.reminders.restPush = false; // rest_alerts.sql not run yet: stop trying
+    } else await q.delete().eq('endpoint', sub.endpoint);
+  } catch { /* offline: the in-app timer still works */ }
+}
+
 /** Keep the server's copy of the schedule fresh (plan changes, a workout done early, new reminder times). */
 let pushTimer = null;
 function syncPushSoon() {
@@ -99,7 +121,8 @@ function pushCardHtml() {
     <p class="muted">App 关着也能收到：每天${esc(state.reminders.morning)}告诉你今天练什么、多重${state.reminders.meals ? '，以及训练前和每一餐的提醒' : ''}。时间和内容跟上面的设置一致。</p>
     ${hint ? `<p class="warn">${hint}</p>` : ''}
     <button class="btn block ${on ? 'ghost' : ''}" data-act="${on ? 'push-off' : 'push-on'}">${on ? '关闭锁屏推送' : '开启锁屏推送'}</button>
-    ${on ? '<button class="btn small ghost block" data-act="push-test">看看推送长什么样</button>' : ''}</div>`;
+    ${on ? `<label class="row check shift-opt"><input type="checkbox" data-rest-push ${state.reminders.restPush !== false ? 'checked' : ''}><span><b>休息结束提醒</b><span class="muted small">组间休息时间到了推送一条通知，切到别的 App 刷视频也能收到</span></span></label>
+      <button class="btn small ghost block" data-act="push-test">看看推送长什么样</button>` : ''}</div>`;
 }
 
 /* ---------- app-icon badge: 1 while today's training is not done ---------- */
@@ -140,6 +163,13 @@ function shortcutsGuideHtml() {
     <p class="muted small">注意：iPhone 的快捷指令会用 Safari 打开链接，而不是主屏幕上的 App。登录同一个账号后数据是一样的。</p></div>`;
 }
 function bindPush() {
+  document.addEventListener('change', (e) => {
+    if (e.target.dataset && e.target.dataset.restPush !== undefined) {
+      state.reminders.restPush = e.target.checked; save();
+      if (!e.target.checked) { restAlertSeq++; currentSub().then((s) => s && cloud.client.from('rest_alerts').delete().eq('endpoint', s.endpoint)).catch(() => {}); }
+      toast(e.target.checked ? '已开启休息结束提醒' : '已关闭休息结束提醒');
+    }
+  });
   document.addEventListener('click', (e) => {
     const b = e.target.closest('#view-me button');
     if (!b) return;
