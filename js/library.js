@@ -23,7 +23,7 @@ function libraryItems() {
   const dbIds = new Set(db.map((d) => d.id));
   allExercises(state).forEach((e) => {
     if (e.db && dbIds.has(e.id)) return; // shown below as the library item it came from
-    items.push({ ...e, kind: 'acc', cats: e.db ? e.cats : [MUSCLE_CAT[e.m] || 'custom'] });
+    items.push({ ...e, kind: 'acc', cats: e.db ? e.cats : e.cats ? [...e.cats, 'custom'] : [MUSCLE_CAT[e.m] || 'custom'] }); // own exercises: their muscle group and 自定义
   });
   db.forEach((d) => { if (!CURATED_IMGS.has(d.id)) items.push({ ...d, img: d.id, kind: 'db' }); });
   return items;
@@ -99,6 +99,7 @@ function openExercise(id) {
   const n = exerciseCounts(trainingHistory(state))[id] || 0;
   const eqNames = (it.eq || []).map((t) => t.split('|').map((x) => EQUIPMENT[x] || x).join(' 或 '));
   if (it.pe === 'other' && it.eqName) eqNames.push(it.eqName);
+  if (!eqNames.length && it.pe && it.pe !== 'body' && Object.fromEntries(EQ_FILTERS)[it.pe]) eqNames.push(Object.fromEntries(EQ_FILTERS)[it.pe]);
   const cats = it.cats.map((c) => LIB_CATS.find(([k]) => k === c)[1]);
   const warn = [st.missing && '你的器械里缺少这个动作需要的器械', st.bad.length && `可能加重你的${st.bad.map((x) => INJURIES[x]).join('、')}不适`].filter(Boolean);
   let actions;
@@ -115,7 +116,7 @@ function openExercise(id) {
     actions = `<div class="row"><button class="btn grow ${st.fav ? '' : 'ghost'}" data-pref="fav">${st.fav ? '❤️ 已喜欢' : '♡ 喜欢'}</button>
       <button class="btn grow ${st.ex ? 'danger-fill' : 'ghost'}" data-pref="ex">${st.ex ? '🚫 已设为不做' : '🚫 不做'}</button></div>
       <p class="muted">❤️ 喜欢的动作会被优先、经常安排；🚫 不做的动作不会出现在计划里。</p>
-      ${it.id.startsWith('custom_') ? '<button class="btn danger block" data-act="del-custom">删除这个自定义动作</button>' : ''}`;
+      ${it.id.startsWith('custom_') ? '<button class="btn ghost block" data-act="edit-custom">✎ 编辑这个自定义动作</button>' : ''}`;
   }
   actions += '<button class="btn block" data-act="add-today">＋ 加入今天的训练</button>';
   actions += `<button class="btn ghost block" data-exhistname="${esc(it.name)}">📈 动作历史</button>`;
@@ -133,13 +134,32 @@ function openExercise(id) {
     ${actions}`, { type: 'exercise', id, reopen: () => openExercise(id) });
 }
 
-function openAddExercise() {
-  openSheet('添加自定义动作', `
-    <label>动作名称</label><input id="cxName" placeholder="如：器械推胸">
-    <label>用在哪里</label><select id="cxSlot">${Object.entries(SLOT_NAMES).map(([k, n]) => `<option value="${k}">${n}${k === 'upper' ? '（推举、卧推日）' : k === 'lower' ? '（硬拉、深蹲日）' : ''}</option>`).join('')}</select>
-    <label>建议次数</label><input id="cxReps" value="10-15">
-    <button class="btn block" data-act="save-custom">添加并设为喜欢</button>
-    <p class="muted">自定义动作会被当作你喜欢的动作，穿插进对应训练日。</p>`, { type: 'add' });
+/* 自定义动作: name, muscle group (library category), equipment, where the planner may use it, reps. id = edit an existing one. */
+const CX_CATS = LIB_CATS.filter(([k]) => !['main', 'custom'].includes(k));
+const CX_EQ = EQ_FILTERS.filter(([k]) => k !== 'all');
+const CAT_SLOT = { chest: 'upper', shoulder: 'upper', tri: 'upper', back: 'pull', bi: 'pull', leg: 'lower', glute: 'lower', calf: 'lower', core: 'core', grip: 'core' };
+let cxDraft = null;
+function openAddExercise(id) {
+  const e = id && (state.customEx || []).find((x) => x.id === id);
+  if (!cxDraft || cxDraft.id !== (id || null)) {
+    cxDraft = e ? { id, name: e.name, cat: (e.cats || [])[0] || MUSCLE_CAT[e.m] || '', eq: e.pe || 'body', slot: e.slot, reps: e.reps || '10-15' }
+      : { id: null, name: '', cat: lib.cat && CX_CATS.some(([k]) => k === lib.cat) ? lib.cat : '', eq: 'body', slot: CAT_SLOT[lib.cat] || 'upper', reps: '10-15' };
+  }
+  const d = cxDraft;
+  openSheet(id ? '编辑自定义动作' : '添加自定义动作', `
+    <label>动作名称</label><input id="cxName" maxlength="24" placeholder="如：器械推胸" value="${esc(d.name)}">
+    <label>动作类别（练哪里）</label>
+    <div class="chips">${CX_CATS.map(([k, l]) => chip(l, `data-cxcat="${k}"`, d.cat === k)).join('')}</div>
+    <label>器械</label>
+    <div class="chips">${CX_EQ.map(([k, l]) => chip(l, `data-cxeq="${k}"`, d.eq === k)).join('')}</div>
+    <label>计划里用在哪里</label><select id="cxSlot">${Object.entries(SLOT_NAMES).map(([k, n]) => `<option value="${k}" ${d.slot === k ? 'selected' : ''}>${n}${k === 'upper' ? '（推举、卧推日）' : k === 'lower' ? '（硬拉、深蹲日）' : ''}</option>`).join('')}</select>
+    <label>建议次数</label><input id="cxReps" maxlength="12" value="${esc(d.reps)}">
+    <button class="btn block" data-act="save-custom">${id ? '保存修改' : '添加并设为喜欢'}</button>
+    ${id ? '<button class="btn danger block" data-act="del-custom">删除这个自定义动作</button>' : '<p class="muted">自定义动作会被当作你喜欢的动作，穿插进对应训练日。</p>'}`, { type: 'add', id: id || null, reopen: () => openAddExercise(id) });
+}
+function readCx() {
+  if (!cxDraft || !$('#cxName')) return;
+  cxDraft.name = $('#cxName').value.trim(); cxDraft.slot = $('#cxSlot').value; cxDraft.reps = $('#cxReps').value.trim() || '10-15';
 }
 
 /** Liking a library exercise copies it into customEx so the planner can use it without loading the library. */
@@ -165,7 +185,7 @@ function bindLibrary() {
     else if (ds.eqf) lib.eq = ds.eqf;
     else if (ds.ltab) lib.tab = ds.ltab;
     else if (ds.ex) return openExercise(ds.ex);
-    else if (ds.act === 'add-ex') return openAddExercise();
+    else if (ds.act === 'add-ex') { cxDraft = null; return openAddExercise(); }
     else return;
     render();
   });
@@ -193,20 +213,34 @@ function bindLibrary() {
         if (it) addExtra(it);
         closeSheet(); currentView = 'workout'; render(); return;
       }
+      else if (ds.act === 'edit-custom') { cxDraft = null; return openAddExercise(id); }
       else if (ds.act === 'del-custom') {
         state.customEx = state.customEx.filter((x) => x.id !== id);
         state.favorites = state.favorites.filter((x) => x !== id);
         save(); closeSheet(); render(); return;
       } else return;
       save(); render(); refreshSheet();
-    } else if (sheetCtx.type === 'add' && ds.act === 'save-custom') {
-      const name = $('#cxName').value.trim();
-      if (!name) return toast('请输入动作名称');
-      const id = `custom_${Date.now()}`;
-      state.customEx.push({ id, name, slot: $('#cxSlot').value, m: 'custom', eq: [], reps: $('#cxReps').value.trim() || '10-15' });
-      state.favorites.push(id);
-      lib.cat = 'custom'; lib.q = '';
-      save(); closeSheet(); render(); toast('已添加');
+    } else if (sheetCtx.type === 'add') {
+      if (ds.cxcat) { readCx(); cxDraft.cat = ds.cxcat; if (CAT_SLOT[ds.cxcat]) cxDraft.slot = CAT_SLOT[ds.cxcat]; return refreshSheet(); }
+      if (ds.cxeq) { readCx(); cxDraft.eq = ds.cxeq; return refreshSheet(); }
+      if (ds.act === 'del-custom' && sheetCtx.id) {
+        if (!confirm('删除这个自定义动作？以前的训练记录不受影响。')) return;
+        state.customEx = state.customEx.filter((x) => x.id !== sheetCtx.id);
+        state.favorites = state.favorites.filter((x) => x !== sheetCtx.id);
+        cxDraft = null; save(); closeSheet(); render(); return toast('已删除');
+      }
+      if (ds.act !== 'save-custom') return;
+      readCx();
+      const d = cxDraft;
+      if (!d.name) return toast('请输入动作名称');
+      if (!d.cat) return toast('请选择动作类别');
+      const fields = { name: d.name, slot: d.slot, m: 'custom', eq: [], pe: d.eq, cats: [d.cat], cat: d.cat, reps: d.reps };
+      if (d.id) Object.assign(state.customEx.find((x) => x.id === d.id) || {}, fields);
+      else { const id = `custom_${Date.now()}`; state.customEx.push({ id, ...fields }); state.favorites.push(id); }
+      lib.cat = d.cat; lib.q = ''; lib.eq = 'all';
+      const edited = !!d.id;
+      cxDraft = null;
+      save(); closeSheet(); render(); toast(edited ? '已保存修改' : `已添加到「${CX_CATS.find(([k]) => k === d.cat)[1]}」`);
     }
   });
 }
