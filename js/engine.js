@@ -44,7 +44,21 @@ function tmFor(st, cycle, week, lift) {
 /* ---------- programs ---------- */
 // UI code may omit `st`: it then means the app's current state (the active program).
 const cur = (st) => st || (typeof state !== 'undefined' ? state : null);
-const progOf = (st) => PROGRAMS[(cur(st) && cur(st).program) || '531'] || PROGRAMS['531'];
+const baseProg = (st) => PROGRAMS[(cur(st) && cur(st).program) || '531'] || PROGRAMS['531'];
+/*
+ * 按循环安排: a weekly plan (5/3/1, Mike, imported weekly plans) can run as a rotation instead —
+ * its training days in order, the next one after the last is done, then `rest` rest days (st.rotation[id] = rest).
+ */
+const rotCache = {};
+const rotationOf = (st, p) => { const r = cur(st) && cur(st).rotation; return !p.flex && r && r[p.id] != null ? r[p.id] : null; };
+function progOf(st) {
+  const p = baseProg(st);
+  const rest = rotationOf(st, p);
+  if (rest == null) return p;
+  const k = `${p.id}:${rest}:${p.days}`;
+  if (!rotCache[k] || rotCache[k].def !== p.def) rotCache[k] = { ...p, flex: true, rotated: true, restAfter: rest, period: p.days + rest, unit: '周' };
+  return rotCache[k];
+}
 const isMike = (st) => progOf(st).id === 'mike';
 const isPPL = (st) => progOf(st).id === 'ppl';
 const isIan = (st) => progOf(st).id === 'ian';
@@ -1005,7 +1019,7 @@ function sessionSummary(st, date, sessionId, readiness) {
 
 if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
-    position, recommend, manualMaxes, doneList, accEditable, accEditFor, applyAccEdits, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
+    position, recommend, manualMaxes, baseProg, doneList, accEditable, accEditFor, applyAccEdits, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
     progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike,
     normalizePlanDef, registerCustomPrograms, buildCustom, cpMax, cpSets, planLifts, isCustom, isCustomProg, CP_DEFAULT_DAYS };

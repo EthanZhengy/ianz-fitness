@@ -173,8 +173,13 @@ function renderWizard() {
       const labels = orderFor(1, d).map((s) => SESSION_LABEL[s]);
       const sortedDays = d.schedule.slice().sort((a, b) => a - b);
       const startWeekNow = wiz.startOpt === 'week' ? wiz.startWeek : 1;
+      const canRotate = !baseProg(d).flex; // weekly plans can also run as a rotation (按循环)
+      const restN = P.restAfter || 0;
       body = `<h2>训练安排${isMike(d) || isPPL(d) || isCustom(d) ? '' : '与偏好'}</h2>
-        ${isCustom(d) && P.flex ? `<div class="card ppl-cycle"><b>${P.def.days.map((x) => esc(x.name)).join(' → ')}${P.def.restAfter ? ` → 休${P.def.restAfter > 1 ? ` ${P.def.restAfter} 天` : ''}` : ''}</b><p class="muted">训练日按顺序轮，不按星期几；练完一个才排下一个，哪天没练第二天接着练。全部练完算计划里的一「周」。</p></div>`
+        ${canRotate ? `<label>怎么安排</label><div class="chips">${chip('按星期（固定周几练）', 'data-rot="0"', !P.rotated)}${chip('按循环（按顺序轮着练）', 'data-rot="1"', !!P.rotated)}</div>` : ''}
+        ${P.rotated ? `<div class="card ppl-cycle"><b>${labels.map(esc).join(' → ')}${restN ? ` → 休${restN > 1 ? ` ${restN} 天` : ''}` : ''}</b><p class="muted">训练日按顺序轮，不按星期几：练完一个才排下一个，哪天没练第二天接着练；${labels.length} 个都练完算一周，然后休息${restN ? ` ${restN} 天` : '（不额外休息）'}。不想练的那天直接休息，计划会等你。</p>
+          <label>每轮练完后休息几天</label><div class="chips">${[0, 1, 2, 3].map((n) => chip(n ? `${n} 天` : '不休', `data-rotrest="${n}"`, restN === n)).join('')}</div></div>`
+          : isCustom(d) && P.flex ? `<div class="card ppl-cycle"><b>${P.def.days.map((x) => esc(x.name)).join(' → ')}${P.def.restAfter ? ` → 休${P.def.restAfter > 1 ? ` ${P.def.restAfter} 天` : ''}` : ''}</b><p class="muted">训练日按顺序轮，不按星期几；练完一个才排下一个，哪天没练第二天接着练。全部练完算计划里的一「周」。</p></div>`
           : isIan(d) ? `<div class="card ppl-cycle"><b>胸 → 腿 → 肩 → 背</b><p class="muted">四个训练日按顺序轮，不按星期几；练完一个才排下一个，哪天没练第二天接着练。四天都练完算 5/3/1 的一「周」。深蹲和硬拉中间隔着肩日，下背有时间恢复。</p></div>`
           : isPPL(d) ? `<div class="card ppl-cycle"><b>推 → 拉 → 腿 → 休</b><p class="muted">四天一循环，从开始那天起自动往下排，不按星期几。哪天有事没练，第二天接着练下一个就行；一个循环练完三次就算完成。</p></div>` : `<label>每周哪 ${P.days} 天训练？（计划是一周 ${P.days} 练）</label>
         <div class="chips">${WEEKDAYS.map((w, i) => chip(w, `data-day="${i}"`, d.schedule.includes(i))).join('')}</div>
@@ -184,7 +189,7 @@ function renderWizard() {
         <label>从哪里开始</label>
         <div class="chips">
           ${wiz.startOpt === 'keep' || (state.onboarded && ((state.program || '531') === d.program || (state.programs || {})[d.program])) ? chip('保持当前进度', 'data-start="keep"', wiz.startOpt === 'keep') : ''}
-          ${isCustom(d) && P.flex ? chip(`今天开始（今天练${esc(P.def.days[0].name)}）`, 'data-start="this"', wiz.startOpt === 'this') + chip('明天开始', 'data-start="next"', wiz.startOpt === 'next')
+          ${P.rotated || (isCustom(d) && P.flex) ? chip(`今天开始（今天练${esc(labels[0])}）`, 'data-start="this"', wiz.startOpt === 'this') + chip('明天开始', 'data-start="next"', wiz.startOpt === 'next')
             : isIan(d) ? chip('今天开始（今天练胸）', 'data-start="this"', wiz.startOpt === 'this') + chip('明天开始', 'data-start="next"', wiz.startOpt === 'next')
             : isPPL(d) ? chip('今天开始（今天练推）', 'data-start="this"', wiz.startOpt === 'this') + chip('明天开始', 'data-start="next"', wiz.startOpt === 'next')
             : chip('本周开始（第 1 周）', 'data-start="this"', wiz.startOpt === 'this') + chip('下周一开始', 'data-start="next"', wiz.startOpt === 'next')}
@@ -332,6 +337,19 @@ function bindWizard() {
       window.scrollTo(0, 0);
     } else if (ds.prog) setDraftProgram(ds.prog);
     else if (ds.mvar) d.mike.variant = ds.mvar;
+    else if (ds.rot !== undefined) {
+      const id = d.program;
+      const rot = d.rotation = { ...(d.rotation || {}) };
+      if (ds.rot === '1') {
+        if (rot[id] == null) { d.weekSchedule = { ...(d.weekSchedule || {}), [id]: d.schedule.slice() }; rot[id] = 1; }
+        d.schedule = Array.from({ length: PROGRAMS[id].days }, (_, i) => i);
+      } else if (rot[id] != null) {
+        delete rot[id];
+        d.schedule = ((d.weekSchedule || {})[id] || PROGRAMS[id].defaultSchedule).slice();
+      }
+      if (wiz.startOpt !== 'keep') wiz.startOpt = 'this';
+      wiz.doneNow = [];
+    } else if (ds.rotrest !== undefined) d.rotation = { ...(d.rotation || {}), [d.program]: Number(ds.rotrest) };
     else if (ds.goal) d.profile.goal = ds.goal;
     else if (ds.injury) toggle(d.injuries, ds.injury);
     else if (ds.equipmode) d.equipment = (ds.equipmode === 'gym' ? GYM_EQUIP : HOME_EQUIP).slice();
@@ -408,7 +426,7 @@ function bindWizard() {
 function toggle(arr, v) { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); }
 
 /** Keep questionnaire answers as they are entered (and sync them when signed in), so they never need re-entering. */
-const WIZ_FIELDS = ['profile', 'program', 'customPrograms', 'mike', 'ppl', 'lifts', 'plateInc', 'equipment', 'injuries', 'favorites', 'excluded', 'customEx', 'schedule', 'trainTime'];
+const WIZ_FIELDS = ['profile', 'program', 'customPrograms', 'rotation', 'weekSchedule', 'mike', 'ppl', 'lifts', 'plateInc', 'equipment', 'injuries', 'favorites', 'excluded', 'customEx', 'schedule', 'trainTime'];
 function persistWizard() {
   if (state.onboarded) return; // editing an existing plan only applies on 完成
   WIZ_FIELDS.forEach((k) => (state[k] = clone(wiz.draft[k])));
@@ -431,6 +449,13 @@ function finishWizard() {
     delete d.programs[newP]; // the active program's settings live at the top level
   } else if (newStart !== state.startDate) d.tests = {};
   d.startDate = newStart;
+  // switched between 按星期 and 按循环 but kept the progress: stay in the same program week
+  const today0 = new Date();
+  const oldPos = oldP === newP && wiz.startOpt === 'keep' && rotationOf(state, baseProg(state)) !== rotationOf(d, baseProg(d)) && position(state, today0);
+  if (oldPos) {
+    if (autoShift(d)) d.weekAdjust = (d.weekAdjust || []).filter((a) => a.date < dateKey(oldPos.weekStart)).concat({ date: dateKey(oldPos.weekStart), wa: oldPos.weekAbs });
+    else d.startDate = dateKey(addDays(periodOf(d) === 7 ? mondayOf(today0) : oldPos.weekStart, -oldPos.weekAbs * periodOf(d)));
+  }
   d.onboarded = true;
   d.wizStep = 0;
   d.logs = state.logs;

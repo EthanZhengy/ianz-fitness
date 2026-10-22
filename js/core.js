@@ -1,7 +1,7 @@
 'use strict';
 /* Shared state, helpers, reminders and calendar export. */
 
-const APP_VERSION = '1.39.1';
+const APP_VERSION = '1.40.0';
 const STORAGE_KEY = 'trainer-531-v2';
 const ALL_EQUIP = Object.keys(EQUIPMENT);
 const GYM_EQUIP = ALL_EQUIP.filter((e) => e !== 'ssb');
@@ -21,7 +21,7 @@ function defaultState() {
     },
     plateInc: 2.5,
     equipment: GYM_EQUIP.slice(),
-    injuries: [], favorites: [], excluded: [], customEx: [], lastW: {}, restPref: {}, tplEx: {}, tplLastPick: {}, blocked: [], customDays: {}, customPrograms: {}, seenStories: [], appearance: { mode: 'dark', accent: 'volt' },
+    injuries: [], favorites: [], excluded: [], customEx: [], lastW: {}, restPref: {}, tplEx: {}, tplLastPick: {}, blocked: [], customDays: {}, customPrograms: {}, rotation: {}, weekSchedule: {}, seenStories: [], appearance: { mode: 'dark', accent: 'volt' },
     schedule: [0, 1, 3, 4],
     trainTime: '18:30',
     startDate: dateKey(mondayOf(new Date())),

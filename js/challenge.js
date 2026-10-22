@@ -43,6 +43,13 @@ function weekPreviewHtml(st, weekAbs, compact, withStatus) {
 
 const shiftOptHtml = (rule) => `<label class="row check shift-opt"><input type="checkbox" data-autoshift ${autoShift() ? 'checked' : ''}>
   <span><b>自动顺延未完成的训练</b><span class="muted small">前一天没练也没关系，后面的安排会自动往后顺延一位；${rule}</span></span></label>`;
+/** 按循环安排 (a weekly plan run as a rotation): what it means, the 自动顺延 switch and where to change it. */
+function rotHtml() {
+  const P = progOf();
+  if (!P.rotated) return '<p class="muted small">按星期安排。想按顺序轮着练（不固定周几），在「修改设置 → 训练安排」里选「按循环」。</p>';
+  return `<p class="muted small">按循环安排：${orderFor(1).map((s) => SESSION_LABEL[s]).join(' → ')}${P.restAfter ? ` → 休 ${P.restAfter} 天` : ''}，在「修改设置 → 训练安排」里可以改回按星期。</p>
+    ${shiftOptHtml('这一周的训练都练完才进入下一周。')}`;
+}
 function programCardHtml(cycle) {
   if (isCustom()) {
     const def = progOf().def;
@@ -88,17 +95,19 @@ function programCardHtml(cycle) {
       <div class="kv"><span>窄推 1RM</span><b>${fmtW(roundTo(mikeMax(state, cycle, 'cg'), 0.5))}kg</b></div>
       <div class="kv"><span>五选一辅助卧推（第 5 周起）</span><b>${esc(v.name)}</b></div>
       <p class="muted">所有重量都按 1RM 的百分比计算。第 16 周测出新极限后，下一轮自动按新 1RM 重新计算。</p>
+      ${rotHtml()}
       <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改 1RM / 辅助卧推</button>
-        <button class="btn small ghost" data-act="postpone">本周没练完，整体顺延一周</button>
-        <button class="btn small ghost" data-act="advance">往前调一周</button></div></div>`;
+        ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">本周没练完，整体顺延一周</button>
+        <button class="btn small ghost" data-act="advance">往前调一周</button>`}</div></div>`;
   }
   return `<div class="card"><h2>训练最大重量 TM（第 ${cycle + 1} 轮）</h2>
     <table class="tm"><tr><th></th><th>1–4周</th><th>5–8周</th><th>9–12周</th></tr>
     ${LIFTS.map((l) => `<tr><td>${variantOf(state, l).name.replace(/（.*）/, '')}</td>${[1, 5, 9].map((w) => `<td>${fmtW(roundTo(tmFor(state, cycle, w, l), 0.5))}</td>`).join('')}</tr>`).join('')}</table>
     <p class="muted">第 5、9 周上肢 +2.5kg，下肢 +5kg。第 12 周测完极限，下一轮按新 1RM × 90% 重新计算。</p>
+    ${rotHtml()}
     <div class="row wrap"><button class="btn small ghost" data-act="edit-lifts">修改最大重量 / 设置</button>
-      <button class="btn small ghost" data-act="postpone">本周没练完，整体顺延一周</button>
-      <button class="btn small ghost" data-act="advance">往前调一周</button></div></div>`;
+      ${autoShift() ? '' : `<button class="btn small ghost" data-act="postpone">本周没练完，整体顺延一周</button>
+      <button class="btn small ghost" data-act="advance">往前调一周</button>`}</div></div>`;
 }
 
 function renderChallenge() {
@@ -120,7 +129,7 @@ function renderChallenge() {
       <div class="grow"><div class="muted">第 ${cycle + 1} 轮</div><h2>${esc(P.name)}</h2>
         <label class="week-pick">当前在 <select data-setround>${Array.from({ length: Math.max(cycle + 1, 2) }, (_, i) => `<option value="${i}" ${i === cycle ? 'selected' : ''}>第 ${i + 1} 轮</option>`).join('')}</select> <select data-setweek>${Array.from({ length: P.weeks }, (_, i) => `<option value="${i + 1}" ${pos && pos.week === i + 1 ? 'selected' : ''}>第 ${i + 1} ${unitOf()} · ${esc(weekName(i + 1))}</option>`).join('')}</select></label>
         ${pos ? '' : `<div class="muted">${fmtDate(parseKey(state.startDate))} 开始</div>`}
-        <div class="muted">${isCustom() ? `${progOf().def.days.map((d) => esc(d.name)).join(' · ')}${progOf().flex ? ' · 按顺序轮换' : ''}` : isIan() ? '胸 → 腿 → 肩 → 背 · 5/3/1 + 双进阶' : isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
+        <div class="muted">${progOf().rotated ? `按循环 · ${orderFor(1).map((s) => SESSION_LABEL[s]).join(' → ')}` : isCustom() ? `${progOf().def.days.map((d) => esc(d.name)).join(' · ')}${progOf().flex ? ' · 按顺序轮换' : ''}` : isIan() ? '胸 → 腿 → 肩 → 背 · 5/3/1 + 双进阶' : isPPL() ? '推 · 拉 · 腿 · 休 · 四天一循环' : isMike() ? '一周两推 · 按 1RM 百分比' : '一周四练 · 5/3/1 · TM = 90% 1RM'}</div></div></div>
     ${programCardHtml(cycle)}`;
   for (let w = 0; w < P.weeks; w++) {
     const weekAbs = cycle * P.weeks + w;
