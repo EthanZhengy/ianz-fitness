@@ -24,10 +24,11 @@ function weekPreviewHtml(st, weekAbs, compact, withStatus) {
   const week = (weekAbs % progOf(st).weeks) + 1;
   const { start } = cycleRange(st, weekAbs);
   const today = new Date();
+  const wpos = weekPos(st, weekAbs);
   return orderFor(week, st).map((sid, i) => {
     const stat = withStatus ? sessionStatus(st, weekAbs, sid, today) : null;
     const date = stat ? stat.date : addDays(start, st.schedule[i] ?? i);
-    const s = buildSession(st, date, sid, {});
+    const s = buildSession(st, date, sid, { pos: wpos });
     if (!s) return '';
     const lines = s.blocks.map((b) => {
       if (b.type === 'main') return `<div><b>${esc(b.title.replace(/^(核心)?主项 · /, ''))}</b> ${compactRows(b.rows.filter((r) => !r.label || !r.label.startsWith('热身')))}</div>`;

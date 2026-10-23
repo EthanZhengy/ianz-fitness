@@ -34,3 +34,18 @@ assert.strictEqual(E.position(st0, d('2026-10-26')).week, 2);
 const m = { ...st, program: 'mike', rotation: { mike: 2 }, logs: {} };
 assert.deepStrictEqual([E.progOf(m).period, E.orderFor(1, m).length], [4, 2]);
 console.log('rotation tests passed');
+
+// previews of later weeks show that week's plan, also while 自动顺延 keeps the current week open
+{
+  const ian = { ...st, program: 'ian', rotation: {}, startDate: '2026-10-21', logs: {}, ianPick: {}, schedule: [0, 1, 2, 3] };
+  const later = E.addDays(d('2026-10-21'), 30);
+  assert.strictEqual(E.position(ian, later).week, 1, 'nothing done: still week 1');
+  const main = (s) => s.blocks.find((b) => b.type === 'main');
+  const w1 = main(E.buildSession(ian, later, 'ianChest', {}));
+  const w2 = main(E.buildSession(ian, later, 'ianChest', { pos: E.weekPos(ian, 1) }));
+  const w5 = main(E.buildSession(ian, later, 'ianChest', { pos: E.weekPos(ian, 4) }));
+  assert.deepStrictEqual(w1.rows.slice(0, 3).map((r) => r.reps), [3, 3, 3]);
+  assert.deepStrictEqual(w2.rows.slice(0, 3).map((r) => r.reps), [5, 5, 5], 'week 2: 5s');
+  assert.ok(w5.rows[0].w > w1.rows[0].w, 'week 5: TM went up');
+}
+console.log('preview tests passed');

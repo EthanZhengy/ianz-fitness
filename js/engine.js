@@ -247,6 +247,13 @@ function position(st, date) {
   };
 }
 
+/** Program week `weekAbs` as a position (for previews: with 自动顺延 a future day still reads as the open week). */
+function weekPos(st, weekAbs) {
+  const n = progOf(st).weeks;
+  const { start, end } = cycleRange(st, weekAbs);
+  return { weekAbs, cycle: Math.floor(weekAbs / n), week: (weekAbs % n) + 1, weekStart: start, weekEnd: end, shift: autoShift(st) || undefined };
+}
+
 function scheduledFor(st, date, week) {
   const i = st.schedule.indexOf(slotOf(st, date));
   return i < 0 ? null : orderFor(week, st)[i] || null;
@@ -464,8 +471,9 @@ function applyAccEdits(st, date, sid, s) {
   return s;
 }
 
+/** opts.pos: build for this program week instead of the one `date` falls in (previews of later weeks). */
 function buildSessionRaw(st, date, sessionId, opts = {}) {
-  const pos = position(st, date);
+  const pos = opts.pos || position(st, date);
   if (!pos || !SESSIONS[sessionId]) return null;
   if (isMike(st)) return programOfSession(sessionId) === 'mike' ? buildMike(st, date, pos, sessionId, opts) : null;
   if (isPPL(st)) return programOfSession(sessionId) === 'ppl' ? buildPPL(st, date, pos, sessionId, opts) : null;
@@ -1019,7 +1027,7 @@ function sessionSummary(st, date, sessionId, readiness) {
 
 if (typeof module !== 'undefined') {
   module.exports = { dateKey, parseKey, addDays, dayDiff, weekdayIdx, mondayOf, roundTo, fmtW, epley, baseTM, tmFor,
-    position, recommend, manualMaxes, baseProg, doneList, accEditable, accEditFor, applyAccEdits, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
+    position, weekPos, recommend, manualMaxes, baseProg, doneList, accEditable, accEditFor, applyAccEdits, weekComplete, advanceWeek, remainingPlan, buildSession, pickExercises, candidates, ranked, nutritionFor, mealsFor,
     variantOf, sessionSummary, scheduledFor, orderFor, requiredFor, doneSessions, doneOn,
     progOf, isMike, isPPL, isIan, ianTM, accPlan, accRecord, buildIan, ianSlotOptions, autoShift, shiftCycles, cycleRange, weekSkipped, setCurrentWeek, periodOf, unitOf, slotOf, slotName, pplMax, buildPPL, programOfSession, isTestWeek, weekName, asProgram, mikeMax, buildMike,
     normalizePlanDef, registerCustomPrograms, buildCustom, cpMax, cpSets, planLifts, isCustom, isCustomProg, CP_DEFAULT_DAYS };
