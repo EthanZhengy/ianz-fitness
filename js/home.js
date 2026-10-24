@@ -326,11 +326,50 @@ function renderWorkout() {
   if (!s) { currentView = 'home'; return render(); }
   const doneToday = t.log.done && t.log.session === t.sid;
   const w = workoutStats(s, t.log, t.sid);
-  $('#view-workout').innerHTML = `<div class="wk-head"><button class="icon-round" data-act="back" aria-label="返回">${ICONS.back}</button>
-      <div class="grow"><b>${sessionName(t.sid, t.pos.week)}</b><div class="muted">第 ${t.pos.week} ${unitOf()} · ${esc(weekName(t.pos.week))} · ${READINESS[t.log.readiness || 'normal'].label}</div></div>
-      <div class="wk-stats"><span><b>${w.done}</b>/${w.sets} 组</span><span><b>${w.exDone}</b>/${w.ex} 动作</span><span><b>${fmtKg(w.volDone)}</b>/${fmtKg(w.vol)} 容量</span></div>
-      ${doneToday ? '' : '<button class="btn small wk-finish" data-act="done">完成</button>'}</div>
-    ${workoutHtml(s, t.log, t.sid, doneToday)}`;
+  const pc = planClock(t.log);
+  // same layout as 新建训练 (free workout): clock and 完成 on top, actions in a bar at the bottom
+  $('#view-workout').innerHTML = `<div class="free-head">
+      <div class="row between"><div class="row"><b class="fclock" data-pclock>${fmtClock(freeElapsed(pc))}</b>
+        ${doneToday ? '' : `<button class="icon-round" data-pact="timer" aria-label="${pc.startedAt ? '暂停' : '开始'}计时">${pc.startedAt ? FIC.pause : FIC.play}</button>`}</div>
+        ${doneToday ? '<button class="btn ghost" data-act="undo-done">继续训练</button>' : '<button class="btn wk-finish" data-act="done">完成</button>'}</div>
+      <div class="row between"><div class="ftitle"><b>${sessionName(t.sid, t.pos.week)}</b><div class="muted small">第 ${t.pos.week} ${unitOf()} · ${esc(weekName(t.pos.week))} · ${READINESS[t.log.readiness || 'normal'].label}</div></div>
+        <span class="wk-stats"><span><b>${w.done}</b>/${w.sets} 组</span><span><b>${w.exDone}</b>/${w.ex} 动作</span><span><b>${fmtKg(w.volDone)}</b>/${fmtKg(w.vol)} 容量</span></span></div></div>
+    <div class="free-body">${workoutHtml(s, t.log, t.sid, doneToday)}
+      ${t.log.note ? `<div class="card"><h3>训练心得</h3><p class="pre">${esc(t.log.note)}</p></div>` : ''}</div>
+    <nav class="free-bar">
+      <button data-pact="min">${FIC.min}<span>最小化</span></button>
+      <button data-pact="tpl">${FIC.tpl}<span>模板</span></button>
+      <button class="add" data-act="add-extra"><i>${ICONS.plus}</i><span>加动作</span></button>
+      <button data-pact="note">${FIC.note}<span>写心得</span></button>
+      <button data-pact="discard">${FIC.trash}<span>放弃</span></button>
+    </nav>`;
+}
+/** The plan workout's clock (log.pclock = { elapsed, startedAt }): starts with the first ticked set, stops at 完成. */
+function planClock(log) { return (log.pclock = log.pclock || { elapsed: 0, startedAt: null }); }
+function stopPlanClock(log) {
+  const pc = planClock(log);
+  if (pc.startedAt) { pc.elapsed += Date.now() - pc.startedAt; pc.startedAt = null; }
+  log.minutes = Math.round(pc.elapsed / 60000) || undefined;
+}
+function planAction(act, t) {
+  const log = t.log;
+  if (act === 'timer') { const pc = planClock(log); if (pc.startedAt) stopPlanClock(log); else { pc.startedAt = Date.now(); pc.auto = true; } }
+  else if (act === 'min') return leaveWorkout();
+  else if (act === 'tpl') return openTemplates();
+  else if (act === 'note') {
+    return openSheet('写心得', `<textarea id="pnInput" rows="6" placeholder="今天的状态、感受、需要改进的地方…">${esc(log.note || '')}</textarea>
+      <button class="btn block" data-pnsave>保存</button>`, { type: 'pnote' });
+  } else if (act === 'discard') {
+    if (!confirm(`放弃今天的${sessionName(t.sid, t.pos.week)}？已打勾的组、改过的重量和加的动作会被清除。`)) return;
+    const sid = t.sid;
+    ['sets', 'sx', 'amrap'].forEach((f) => Object.keys(log[f] || {}).filter((k) => k.startsWith(`${sid}:`)).forEach((k) => delete log[f][k]));
+    if (log.extra) delete log.extra[sid];
+    delete log.pclock; delete log.note;
+    if (!log.done) delete log.session;
+    stopRest(); wkLeft = '';
+    currentView = 'home';
+  } else return;
+  snapshot(t.date, log); save(); render();
 }
 
 /* Default rest per block; the user can change it per exercise (state.restPref). */
@@ -452,12 +491,9 @@ function blocksHtml(s, log, sid) {
 
 function workoutHtml(s, log, sid, doneToday) {
   let html = '';
+  if (doneToday) html += `<div class="card center">${BADGE.app}<p>今天的训练已完成${log.minutes ? ` · 用时 ${log.minutes} 分钟` : ''}，记得吃练后餐。</p></div>`;
   if (s.notes.length) html += `<ul class="notes">${s.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
   html += blocksHtml(s, log, sid);
-  html += '<button class="btn ghost block" data-act="add-extra">＋ 添加动作</button>';
-  html += doneToday
-    ? `<div class="card center">${BADGE.app}<p>今天的训练已完成，记得吃练后餐。</p><button class="btn ghost block" data-act="undo-done">撤销完成</button></div>`
-    : '<button class="btn block big" data-act="done">✅ 完成今天的训练</button>';
   html += '<p class="muted small center">点组号切换 正式 / 热身 / 递减 / 力竭；重量和次数可以直接改</p>';
   return html;
 }
@@ -677,6 +713,7 @@ function bindRestDrag() {
 /* ---------- finishing: the 完成 button any time, and a prompt once every set is ticked ---------- */
 function finishPlanWorkout(t) {
   const log = t.log;
+  stopPlanClock(log);
   log.session = t.sid; log.done = true; log.offline = false;
   stopRest();
   toast(`💪 ${doneLine()}`);
@@ -851,6 +888,7 @@ function bindWorkout() {
     const sid = wkSid(t);
     const ds = b.dataset;
     if (ds.act === 'back') return leaveWorkout();
+    if (ds.pact) return planAction(ds.pact, t);
     if (ds.fact) return freeAction(ds.fact, t);
     if (ds.wbsort !== undefined) { wkSort = !wkSort; render(); return; }
     if (ds.wbmv) { moveBlock(sessionWithExtras(state, t.date, sid, log).blocks, sid, ds.wbmv, Number(ds.dir)); render(); return; }
@@ -877,6 +915,7 @@ function bindWorkout() {
         // last set of this exercise: open the next unfinished one
         if (bb && blockProgress(log, sid, bb).full) wkOpen = undefined;
         if (sid === 'free' && !freeLog(log).startedAt && !freeLog(log).done) freeLog(log).startedAt = Date.now();
+        if (sid !== 'free' && !log.done && !planClock(log).auto) { planClock(log).startedAt = Date.now(); planClock(log).auto = true; } // first set starts the clock
       }
     } else if (ds.stype) {
       const rows = editRows(log, sid, blk(ds.stype));
@@ -924,6 +963,12 @@ function bindWorkout() {
     if (ds.tick && (log.sets[`${sid}:${ds.tick}`] || [])[ds.i]) askDoneIfComplete(t, sid);
   });
   $('#sheet').addEventListener('click', (e) => {
+    if (sheetCtx && sheetCtx.type === 'pnote' && e.target.closest('[data-pnsave]')) {
+      const t = todayInfo();
+      t.log.note = $('#pnInput').value.trim() || undefined;
+      snapshot(t.date, t.log); save(); closeSheet(); render();
+      return toast('心得已保存');
+    }
     const b = e.target.closest('[data-wkdone]');
     if (!b || !sheetCtx || sheetCtx.type !== 'wkdone') return;
     closeSheet();

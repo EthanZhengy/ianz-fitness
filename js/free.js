@@ -42,8 +42,9 @@ function updateFreeStats() { const el = $('#fstats'); if (el) el.innerHTML = fre
 // Tick the clocks on the free-workout screen and the home banner
 setInterval(() => {
   const f = state.logs[dateKey(new Date())] && state.logs[dateKey(new Date())].free;
-  if (!f || !f.startedAt) return;
-  document.querySelectorAll('[data-fclock]').forEach((el) => { el.textContent = fmtClock(freeElapsed(f)); });
+  if (f && f.startedAt) document.querySelectorAll('[data-fclock]').forEach((el) => { el.textContent = fmtClock(freeElapsed(f)); });
+  const pc = state.logs[dateKey(new Date())] && state.logs[dateKey(new Date())].pclock;
+  if (pc && pc.startedAt) document.querySelectorAll('[data-pclock]').forEach((el) => { el.textContent = fmtClock(freeElapsed(pc)); });
 }, 1000);
 
 function renderFree() {
