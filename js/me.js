@@ -32,7 +32,34 @@ function bodyDataHtml() {
       <label>活动量</label><select data-profile="activity">
         <option value="1.2" ${sel(1.2, p.activity)}>久坐（办公室、学生）</option><option value="1.35" ${sel(1.35, p.activity)}>轻度活动（经常走动）</option><option value="1.5" ${sel(1.5, p.activity)}>中度活动（体力工作）</option></select>
       <label>目标</label><div class="chips">${Object.entries(GOALS).map(([k, g]) => chip(g.label, `data-goal="${k}"`, p.goal === k)).join('')}</div>
-      <p class="muted">修改后自动保存${cloud.user ? '并同步到账号' : ''}。体重会同时记入「历史 → 数据」的体重曲线。</p></div>`;
+      <p class="muted">修改后自动保存${cloud.user ? '并同步到账号' : ''}。体重会同时记入「历史 → 数据」的体重曲线。</p></div>${girthHtml()}`;
+}
+
+/* 围度记录: arm / thigh / waist in cm, one entry per day (state.girth[dateKey] = { arm, thigh, waist }). */
+const GIRTHS = [['arm', '臂围', '手臂放松垂下，量上臂最粗处'], ['thigh', '腿围', '站直，量大腿最粗处（臀线下方）'], ['waist', '腰围', '呼气放松，量肚脐一圈']];
+let girthSel = 'arm';
+function girthPoints(k) {
+  return Object.entries(state.girth || {}).filter(([, v]) => v && v[k] > 0).sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([d, v]) => ({ x: parseKey(d), y: v[k], tip: `${fmtDate(parseKey(d))} · ${v[k]}cm` }));
+}
+function girthHtml() {
+  const today = (state.girth || {})[dateKey(new Date())] || {};
+  const pts = girthPoints(girthSel);
+  const name = GIRTHS.find(([k]) => k === girthSel)[1];
+  return `<div class="card"><h2>围度记录</h2>
+    <div class="grid3">${GIRTHS.map(([k, l, how]) => {
+      const p = girthPoints(k);
+      const last = p[p.length - 1], prev = p[p.length - 2];
+      const diff = last && prev ? Math.round((last.y - prev.y) * 10) / 10 : null;
+      return `<div class="girth"><label title="${how}">${l} (cm)</label><input type="number" inputmode="decimal" step="0.1" min="10" max="250" data-girth="${k}" value="${today[k] ?? ''}" placeholder="${last ? last.y : '—'}">
+        <span class="muted small">${last ? `上次 ${last.y}${diff ? `（${diff > 0 ? '+' : ''}${diff}）` : ''}` : '还没记录'}</span></div>`;
+    }).join('')}</div>
+    <button class="btn block" data-act="girth-save">记录今天的围度</button>
+    <p class="muted small">${GIRTHS.map(([, l, how]) => `${l}：${how}`).join('；')}。建议每 1–2 周同一时间（早上空腹）量一次。</p>
+    <div class="chips">${GIRTHS.map(([k, l]) => chip(l, `data-girthsel="${k}"`, girthSel === k)).join('')}</div>
+    ${pts.length > 1 ? `${lineChart({ series: [{ name, cls: 's1', dots: pts.length < 30, points: pts }], height: 150, unit: 'cm' })}
+      <p class="muted">${name}：${fmtDate(pts[0].x)} 至今 ${pts[pts.length - 1].y - pts[0].y >= 0 ? '+' : ''}${(pts[pts.length - 1].y - pts[0].y).toFixed(1)}cm</p>`
+      : `<p class="muted">${name}记录两次以上就能看到变化曲线。</p>`}</div>`;
 }
 function bindNutrition() {
   const root = $('#view-me');
@@ -44,10 +71,22 @@ function bindNutrition() {
     save(); render();
   });
   root.addEventListener('click', (e) => {
-    const g = e.target.closest('button')?.dataset.goal;
+    const b = e.target.closest('button');
+    if (b && b.dataset.girthsel) { girthSel = b.dataset.girthsel; return render(); }
+    if (b && b.dataset.act === 'girth-save') {
+      const v = {};
+      root.querySelectorAll('[data-girth]').forEach((el) => { const x = Number(el.value); if (x >= 10 && x <= 250) v[el.dataset.girth] = Math.round(x * 10) / 10; });
+      if (!Object.keys(v).length) return toast('先填写臂围、腿围或腰围（厘米）');
+      const k = dateKey(new Date());
+      state.girth = { ...(state.girth || {}), [k]: { ...((state.girth || {})[k] || {}), ...v } };
+      save(); render();
+      return toast(`已记录：${GIRTHS.filter(([g]) => v[g]).map(([g, l]) => `${l} ${v[g]}cm`).join('，')}`);
+    }
+    const g = b?.dataset.goal;
     if (!g) return;
     state.profile.goal = g; save(); render();
   });
+  bindChartTips(root);
 }
 
 
