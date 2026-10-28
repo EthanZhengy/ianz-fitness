@@ -147,17 +147,57 @@ function renderChallenge() {
   $('#view-challenge').innerHTML = html;
 }
 
+/* Managing the plan list: imported plans can be shared, renamed and deleted; built-in plans hidden (per user, can be restored).
+ * The plan in use can't be removed. In the questionnaire the changes go to both the app state and the draft. */
+const progVisible = (p, keep) => p.id === keep || !(p.hidden || (state.hiddenPrograms || []).includes(p.id));
+function progToolsHtml(p, active) {
+  if (p.custom) {
+    return `<div class="row wrap prog-tools"><button class="btn tiny ghost" data-plan-share="${p.id}">分享</button><button class="btn tiny ghost" data-plan-rename="${p.id}">改名</button>${active ? '' : `<button class="btn tiny ghost" data-plan-del="${p.id}">删除</button>`}</div>`;
+  }
+  return active ? '' : `<div class="row wrap prog-tools"><button class="btn tiny ghost" data-plan-hide="${p.id}">隐藏</button></div>`;
+}
+function hiddenProgsHtml() {
+  const h = (state.hiddenPrograms || []).filter((id) => PROGRAMS[id]);
+  return h.length ? `<p class="muted small">已隐藏：${h.map((id) => esc(PROGRAMS[id].name)).join('、')} <button class="link" data-plan-unhide>恢复显示</button></p>` : '';
+}
+/** Handles a plan-list tool button; returns true when it did something. */
+function progToolAction(t, active) {
+  const ds = t.dataset;
+  const both = (fn) => { fn(state); if (typeof wiz !== 'undefined' && wiz && wiz.draft !== state) fn(wiz.draft); };
+  if (ds.planShare) { sharePlanFile(ds.planShare); return true; }
+  if (ds.planRename) {
+    const id = ds.planRename;
+    const name = prompt('新的计划名称', state.customPrograms[id].name);
+    if (!name || !name.trim()) return true;
+    both((s) => { if (s.customPrograms && s.customPrograms[id]) s.customPrograms[id].name = name.trim().slice(0, 30); });
+  } else if (ds.planDel) {
+    const id = ds.planDel;
+    if (id === active || id === progOf().id) { toast('正在用的计划不能删除，先换一个计划'); return true; }
+    if (!confirm(`删除「${PROGRAMS[id].name}」？\n\n用这个计划练过的记录会保留在「历史」里。`)) return true;
+    both((s) => { if (s.customPrograms && s.customPrograms[id]) s.customPrograms[id].hidden = true; });
+  } else if (ds.planHide) {
+    const id = ds.planHide;
+    if (id === active || id === progOf().id) { toast('正在用的计划不能隐藏'); return true; }
+    both((s) => { s.hiddenPrograms = [...new Set([...(s.hiddenPrograms || []), id])]; });
+    toast(`已隐藏「${PROGRAMS[id].name}」，在列表最下面可以恢复`);
+  } else if (ds.planUnhide !== undefined) both((s) => { s.hiddenPrograms = []; });
+  else return false;
+  save(); registerCustomPrograms(state);
+  return true;
+}
+
 /** Pick another training program; setting it up goes through the questionnaire's plan steps. */
 function openProgramPicker() {
   openSheet('选择训练计划', `<button class="card mk-entry" data-act="plan-import"><span class="mk-entry-ic">✨</span><span class="grow"><b>导入训练计划</b><span class="muted small">${CLOUD_CONFIG.aiImport ? '上传 Excel / PDF / Word / 图片，AI 自动生成计划；也能打开朋友分享的计划文件' : '用自己的 AI 转换，或打开朋友分享的计划文件'}</span></span><span class="muted">›</span></button>
-    ${Object.values(PROGRAMS).filter((p) => !p.hidden).map((p) => {
+    ${Object.values(PROGRAMS).filter((p) => progVisible(p, progOf().id)).map((p) => {
     const on = progOf().id === p.id;
     const saved = state.programs && state.programs[p.id];
     return `<button class="prog-card${on ? ' on' : ''}" data-program="${p.id}">
       <div class="row between"><b>${esc(p.name)}</b>${on ? '<span class="tag">当前</span>' : saved ? '<span class="tag">有进度</span>' : ''}</div>
       <div class="muted">${p.flex ? `${p.weeks} ${p.unit === '周' ? '周' : '轮'} · ${p.days} 个训练日按顺序轮换` : `${p.weeks} 周 · 一周 ${p.days} 练`}${p.custom ? ' · 导入的计划' : ''}</div><p>${esc(p.desc)}</p></button>
-      ${p.custom ? `<div class="row wrap prog-tools"><button class="btn tiny ghost" data-plan-share="${p.id}">分享</button>${on ? '' : `<button class="btn tiny ghost" data-plan-del="${p.id}">删除</button>`}</div>` : ''}`;
+      ${progToolsHtml(p, on)}`;
   }).join('')}
+    ${hiddenProgsHtml()}
     <p class="muted">切换后，之前计划的训练记录都会保留在「历史」里；切回来时可以接着之前的进度练。</p>`, { type: 'program' });
 }
 
@@ -196,12 +236,7 @@ function bindChallenge() {
     if (!sheetCtx || sheetCtx.type !== 'program') return;
     const t = e.target.closest('button');
     if (t && t.dataset.act === 'plan-import') return openPlanImport();
-    if (t && t.dataset.planShare) return sharePlanFile(t.dataset.planShare);
-    if (t && t.dataset.planDel) {
-      if (!confirm(`删除「${PROGRAMS[t.dataset.planDel].name}」？\n\n用这个计划练过的记录会保留在「历史」里。`)) return;
-      state.customPrograms[t.dataset.planDel].hidden = true;
-      save(); registerCustomPrograms(state); return openProgramPicker();
-    }
+    if (t && !t.dataset.program && progToolAction(t, progOf().id)) return openProgramPicker();
     const b = e.target.closest('[data-program]');
     if (!b) return;
     closeSheet();

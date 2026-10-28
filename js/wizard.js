@@ -149,9 +149,10 @@ function renderWizard() {
       break;
     case 'program':
       body = `<h2>选择训练计划</h2><p class="muted">之后随时可以在「挑战」页切换，训练记录都会保留。</p>
-        ${Object.values(PROGRAMS).filter((pr) => !pr.hidden || pr.id === d.program).map((pr) => `<button class="prog-card${d.program === pr.id ? ' on' : ''}" data-prog="${pr.id}">
+        ${Object.values(PROGRAMS).filter((pr) => progVisible(pr, d.program)).map((pr) => `<button class="prog-card${d.program === pr.id ? ' on' : ''}" data-prog="${pr.id}">
           <div class="row between"><b>${esc(pr.name)}</b>${d.program === pr.id ? '<span class="tag">已选</span>' : ''}</div>
-          <div class="muted">${pr.custom ? `${pr.flex ? `${pr.weeks} 轮 · ${pr.days} 个训练日按顺序轮换` : `${pr.weeks} 周 · 一周 ${pr.days} 练`} · 导入的计划` : pr.id === 'ian' ? '4 周一个周期 · 四个训练日轮换' : pr.period ? `${pr.weeks} 个循环 · ${pr.period} 天一循环` : `${pr.weeks} 周 · 一周 ${pr.days} 练`}</div><p>${esc(pr.desc)}</p></button>`).join('')}`;
+          <div class="muted">${pr.custom ? `${pr.flex ? `${pr.weeks} 轮 · ${pr.days} 个训练日按顺序轮换` : `${pr.weeks} 周 · 一周 ${pr.days} 练`} · 导入的计划` : pr.id === 'ian' ? '4 周一个周期 · 四个训练日轮换' : pr.period ? `${pr.weeks} 个循环 · ${pr.period} 天一循环` : `${pr.weeks} 周 · 一周 ${pr.days} 练`}</div><p>${esc(pr.desc)}</p></button>${progToolsHtml(pr, pr.id === d.program || pr.id === (state.program || '531'))}`).join('')}
+        ${hiddenProgsHtml()}`;
       break;
     case 'body':
       body = `<h2>身体情况与器械</h2>
@@ -336,6 +337,7 @@ function bindWizard() {
       persistWizard();
       window.scrollTo(0, 0);
     } else if (ds.prog) setDraftProgram(ds.prog);
+    else if (progToolAction(t, d.program)) { /* plan list tools: rename / delete / hide */ }
     else if (ds.mvar) d.mike.variant = ds.mvar;
     else if (ds.rot !== undefined) {
       const id = d.program;
