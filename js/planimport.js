@@ -243,6 +243,13 @@ function savePlan(use) {
   registerCustomPrograms(state);
   pim = null;
   closeSheet();
+  if (typeof wiz !== 'undefined' && wiz) {
+    // imported from the questionnaire's 训练计划 step: keep the questionnaire, add the plan to its draft
+    wiz.draft.customPrograms = { ...(wiz.draft.customPrograms || {}), [d.id]: d };
+    if (use) { setDraftProgram(d.id); wiz.step = STEP_IDS.indexOf(planLifts(d).length ? 'lifts' : 'schedule'); }
+    render(); window.scrollTo(0, 0);
+    return toast(use ? `已选择「${d.name}」，接着填写下面的信息` : '已保存到计划列表');
+  }
   if (!use) { toast('已保存，在「切换计划」里随时可以开始'); render(); return; }
   startWizard(true, d.id, planLifts(d).length ? 'lifts' : 'schedule');
 }

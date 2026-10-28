@@ -149,6 +149,7 @@ function renderWizard() {
       break;
     case 'program':
       body = `<h2>选择训练计划</h2><p class="muted">之后随时可以在「挑战」页切换，训练记录都会保留。</p>
+        <button class="card mk-entry" data-act="plan-import"><span class="mk-entry-ic">✨</span><span class="grow"><b>导入训练计划</b><span class="muted small">${CLOUD_CONFIG.aiImport ? '上传 Excel / PDF / Word / 图片，AI 自动生成计划；也能打开朋友分享的计划文件' : '用自己的 AI 转换，或打开朋友分享的计划文件'}</span></span><span class="muted">›</span></button>
         ${Object.values(PROGRAMS).filter((pr) => progVisible(pr, d.program)).map((pr) => `<button class="prog-card${d.program === pr.id ? ' on' : ''}" data-prog="${pr.id}">
           <div class="row between"><b>${esc(pr.name)}</b>${d.program === pr.id ? '<span class="tag">已选</span>' : ''}</div>
           <div class="muted">${pr.custom ? `${pr.flex ? `${pr.weeks} 轮 · ${pr.days} 个训练日按顺序轮换` : `${pr.weeks} 周 · 一周 ${pr.days} 练`} · 导入的计划` : pr.id === 'ian' ? '4 周一个周期 · 四个训练日轮换' : pr.period ? `${pr.weeks} 个循环 · ${pr.period} 天一循环` : `${pr.weeks} 周 · 一周 ${pr.days} 练`}</div><p>${esc(pr.desc)}</p></button>${progToolsHtml(pr, pr.id === d.program || pr.id === (state.program || '531'))}`).join('')}
@@ -316,6 +317,7 @@ function bindWizard() {
     if (!t || !wiz) return;
     const d = wiz.draft;
     const ds = t.dataset;
+    if (ds.act === 'plan-import') return openPlanImport();
     if (ds.wiz === 'back') wiz.step--;
     else if (ds.wiz === 'cancel') { wiz = null; render(); return; }
     else if (ds.wtab) {
