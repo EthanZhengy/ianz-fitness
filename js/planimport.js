@@ -107,8 +107,16 @@ function openPlanImport() {
   if (typeof ensureExdb === 'function') ensureExdb(); // exercise photos for the catalog
   drawPlanImport();
 }
+const aiImportOn = () => typeof CLOUD_CONFIG !== 'undefined' && !!CLOUD_CONFIG.aiImport;
 function drawPlanImport() {
   if (pim.plan) return drawPlanPreview();
+  if (!aiImportOn()) {
+    return openSheet('导入训练计划', `<p class="muted">打开朋友分享给你的计划文件（文件名以 <b>.ianzplan.json</b> 结尾），导入后可以先预览再使用，不用登录。</p>
+      <label class="btn block pim-pick">📎 选择计划文件<input type="file" id="pimFile" accept=".json,application/json" hidden></label>
+      ${pim.err ? `<p class="pim-err">${esc(pim.err)}</p>` : ''}
+      <div class="card"><h3>怎么分享计划</h3><p class="muted small">朋友在「挑战 → 切换计划」里，点他导入的计划下面的「分享」，把生成的文件通过微信等发给你；你在微信里把文件存到手机（「文件」App 或下载），再回到这里选择它。</p></div>
+      <p class="muted small">AI 识别 Excel / PDF / 照片暂未开放。</p>`, { type: 'planimport' });
+  }
   const login = cloudEnabled() && cloud.user;
   openSheet('导入训练计划', `<p class="muted">把别人发给你的训练计划交给 AI：Excel、Word、PDF、照片 / 截图都可以，也能直接粘贴文字。AI 会按 App 的方式生成计划：主项按 1RM 百分比、辅助动作按双进阶自动加重，导入后可以先看再用。</p>
     <label class="btn block ghost pim-pick">📎 选择文件<input type="file" id="pimFile" multiple hidden accept=".xlsx,.xlsm,.docx,.pdf,.csv,.tsv,.txt,.md,.json,image/*"></label>
@@ -209,6 +217,7 @@ function bindPlanImport() {
       try {
         const r = await readPlanFile(f);
         if (r.plan) { pim.plan = normalizePlanDef({ ...r.plan, source: 'file' }, newPlanId()); break; }
+        if (!aiImportOn()) throw new Error('这不是计划文件。AI 识别暂未开放，现在只能导入别人分享的 .ianzplan.json 文件');
         if (r.kind === 'text' && !r.data.trim()) throw new Error('里面没有读到文字');
         if (pim.files.length >= 6) throw new Error('最多 6 个文件');
         pim.files.push({ ...r, size: r.data.length });

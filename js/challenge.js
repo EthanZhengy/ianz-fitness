@@ -149,7 +149,7 @@ function renderChallenge() {
 
 /** Pick another training program; setting it up goes through the questionnaire's plan steps. */
 function openProgramPicker() {
-  openSheet('选择训练计划', `<button class="card mk-entry" data-act="plan-import"><span class="mk-entry-ic">✨</span><span class="grow"><b>导入训练计划</b><span class="muted small">上传 Excel / PDF / Word / 图片，AI 自动生成计划；也能打开朋友分享的计划文件</span></span><span class="muted">›</span></button>
+  openSheet('选择训练计划', `<button class="card mk-entry" data-act="plan-import"><span class="mk-entry-ic">✨</span><span class="grow"><b>导入训练计划</b><span class="muted small">${CLOUD_CONFIG.aiImport ? '上传 Excel / PDF / Word / 图片，AI 自动生成计划；也能打开朋友分享的计划文件' : '打开朋友分享的计划文件'}</span></span><span class="muted">›</span></button>
     ${Object.values(PROGRAMS).filter((p) => !p.hidden).map((p) => {
     const on = progOf().id === p.id;
     const saved = state.programs && state.programs[p.id];

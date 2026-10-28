@@ -337,7 +337,8 @@ Excel / Word 在手机上直接解析成文字，PDF 和图片原样发给 AI。
 1. SQL Editor 运行 `supabase/plan_import.sql`（每人每天的次数限制）。
 2. 在 [Anthropic Console](https://platform.claude.com/) 创建 API Key，填到 Supabase → Edge Functions → **Secrets**：`ANTHROPIC_API_KEY`。**只放在这里，不要写进代码或发给任何人。**
 3. 部署函数 `supabase/functions/plan-import`（保持 **Verify JWT 开启**）：`supabase functions deploy plan-import`，或在控制台新建函数粘贴 `index.ts`。
-4. 可选 Secrets：`PLAN_IMPORT_DAILY`（每人每天次数，默认 10）、`PLAN_IMPORT_MODEL`（默认 `claude-opus-5-5`）。
+4. 部署好之后把 `js/config.js` 里的 `aiImport` 改成 `true`（没改之前「导入训练计划」只能打开分享的计划文件，不显示 AI 选项）。
+5. 可选 Secrets：`PLAN_IMPORT_DAILY`（每人每天次数，默认 10）、`PLAN_IMPORT_MODEL`（默认 `claude-opus-5-5`）。
 
 函数用 Claude 的结构化输出（JSON Schema）生成计划，开启了自适应思考；如果模型因为安全策略拒绝，会自动换 Anthropic 推荐的备用模型重试（`fallbacks: "default"`）。只有登录用户能调用，按用户限流，并记录每次的 token 用量（`plan_imports` 表）。
 

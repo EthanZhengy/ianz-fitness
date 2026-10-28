@@ -12,5 +12,8 @@ const CLOUD_CONFIG = {
   google: true,
   // Web Push (lock-screen reminders): the VAPID PUBLIC key — public by design. The private key lives only in
   // Supabase → Edge Functions → Secrets (see README「锁屏推送」).
+  // aiImport: true once the plan-import Edge Function is deployed with ANTHROPIC_API_KEY (README「导入训练计划（AI）」).
+  // false: 导入训练计划 only opens shared plan files (.ianzplan.json), no AI.
+  aiImport: false,
   vapidPublicKey: 'BIdq0UzwLtqAsMJ7G_MqE5E-468agf_t_rzilquRMrI80s0_ePY7gz3ttsSYJcv9nDMUjGaRH2yHeFnoQumzBtQ',
 };
