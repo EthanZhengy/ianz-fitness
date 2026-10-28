@@ -149,7 +149,7 @@ function renderChallenge() {
 
 /* Managing the plan list: imported plans can be shared, renamed and deleted; built-in plans hidden (per user, can be restored).
  * The plan in use can't be removed. In the questionnaire the changes go to both the app state and the draft. */
-const progVisible = (p, keep) => p.id === keep || !(p.hidden || (state.hiddenPrograms || []).includes(p.id));
+const progVisible = (p, keep) => p.id === keep || !(p.hidden || p.retired || (state.hiddenPrograms || []).includes(p.id));
 function progToolsHtml(p, active) {
   if (p.custom) {
     return `<div class="row wrap prog-tools"><button class="btn tiny ghost" data-plan-share="${p.id}">分享</button><button class="btn tiny ghost" data-plan-rename="${p.id}">改名</button>${active ? '' : `<button class="btn tiny ghost" data-plan-del="${p.id}">删除</button>`}</div>`;
@@ -157,7 +157,7 @@ function progToolsHtml(p, active) {
   return active ? '' : `<div class="row wrap prog-tools"><button class="btn tiny ghost" data-plan-hide="${p.id}">隐藏</button></div>`;
 }
 function hiddenProgsHtml() {
-  const h = (state.hiddenPrograms || []).filter((id) => PROGRAMS[id]);
+  const h = (state.hiddenPrograms || []).filter((id) => PROGRAMS[id] && !PROGRAMS[id].retired);
   return h.length ? `<p class="muted small">已隐藏：${h.map((id) => esc(PROGRAMS[id].name)).join('、')} <button class="link" data-plan-unhide>恢复显示</button></p>` : '';
 }
 /** Handles a plan-list tool button; returns true when it did something. */

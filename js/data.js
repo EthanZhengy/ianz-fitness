@@ -81,7 +81,8 @@ const PROGRAMS = {
     defaultSchedule: [0, 3],
   },
   ppl: {
-    id: 'ppl', name: '三分化 5+1 计划（推·拉·腿）', short: '推拉腿', weeks: 6, days: 3, period: 4, unit: '循环', flex: true,
+    // retired: no longer offered (replaced by imported versions); kept so existing progress and history still work
+    id: 'ppl', name: '三分化 5+1 计划（推·拉·腿）', short: '推拉腿', weeks: 6, days: 3, period: 4, unit: '循环', flex: true, retired: true,
     desc: '推 → 拉 → 腿 → 休，四天一循环，共 6 个循环：5 个循环逐步加重 + 1 个减载循环。卧推、深蹲按 1RM 百分比，辅助动作 3 组 × 8–12 次（RPE 8）。',
     defaultSchedule: [0, 1, 2],
   },
