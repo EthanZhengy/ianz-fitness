@@ -82,9 +82,7 @@ const toBase64 = (buf) => {
 async function readPlanFile(f) {
   const ext = (f.name.split('.').pop() || '').toLowerCase();
   if (ext === 'json') {
-    const j = JSON.parse(await f.text());
-    if (!j || !j.ianzPlan || !j.plan) throw new Error('不是 Ianz Fitness 的计划文件');
-    return { name: f.name, plan: j.plan };
+    return { name: f.name, plan: parsePlanText(await f.text()) };
   }
   if (['xlsx', 'xlsm'].includes(ext)) return { name: f.name, kind: 'text', data: await xlsxText(await f.arrayBuffer()) };
   if (ext === 'docx') return { name: f.name, kind: 'text', data: await docxText(await f.arrayBuffer()) };
@@ -101,6 +99,62 @@ async function readPlanFile(f) {
   throw new Error('支持 Excel、Word、PDF、图片、CSV、文本，以及分享的计划文件');
 }
 
+/* ---------- 用自己的 AI 转换: copy these instructions into any chat AI with the plan, paste its JSON back ---------- */
+const PLAN_PROMPT = `请把我发给你的训练计划（文件、图片或文字）转换成下面格式的 JSON。只输出 JSON 本身，不要任何解释。所有文字用简体中文。
+
+{
+  "name": "计划名，16 字以内",
+  "desc": "一两句话：怎么分化、目标、怎么进阶",
+  "weeks": 一个周期有几周（1–24，计划没写周期就填 4）,
+  "mode": "weekly"（按星期几练）或 "rotation"（不管星期几、按顺序轮着练，比如推/拉/腿/休）,
+  "restAfter": rotation 模式下每轮练完休息几天（0–3），weekly 填 0,
+  "weekInfo": [每周一项，共 weeks 项：{ "name": "积累期 1", "deload": 是否减载周 true/false, "note": "" }],
+  "days": [每个训练日一项，按顺序：{ "name": "推日（8 字以内）", "focus": "upper" | "lower" | "full", "note": "热身或当天说明", "exercises": [动作] }],
+  "warnings": ["拿不准、或者没法表示的地方"]
+}
+
+动作：
+{ "name": "中文动作名", "cat": "chest|back|leg|shoulder|bi|tri|glute|calf|grip|core", "lift": "bench|squat|deadlift|press 或 \"\"", "load": "pct|double|kg|free", "equip": "bb|smith|db|cable|machine|press|bw", "rest": 组间休息秒数, "note": "要点、可替换动作", "plan": [{ "weeks": [这一条适用第几周，空数组 = 其他所有周], "sets": [每组一个对象] }] }
+
+每组：{ "reps": 次数（范围写下限）, "repsMax": 范围上限（不是范围就和 reps 一样）, "pct": 1RM 百分比（load 为 pct 时，否则 0）, "kg": 固定重量（load 为 kg 时，否则 0）, "rpe": RPE 或 0, "amrap": 是否“尽量多做”, "warm": 是否热身组 }
+
+规则：
+1. lift 只在杠铃卧推、深蹲、硬拉、站姿推举并且按 1RM 百分比计算时填写，这时 load 用 "pct"；其他动作 lift 填 ""。
+2. 写着次数范围、做到上限再加重的辅助动作（比如 3×8–12）用 "double"；计划给了固定重量用 "kg"；按 RPE、自重、计时等其他情况用 "free"。
+3. 按训练最大重量（TM）给的百分比要换算成 1RM 百分比：5/3/1 的 TM 是 1RM 的 90%，所以 85% TM 写 76.5。
+4. 每周不一样（波浪周期、逐周加量、减载周）时，用多个 plan 条目分别写对应的周；每周都一样就只写一条、weeks 用空数组。
+5. 不要编造计划里没有的动作；不确定的写进 warnings。`;
+/** A plan from pasted text or a file: a shared plan file ({ ianzPlan, plan }) or plan JSON from an AI (code fences and extra words around it are fine). */
+function parsePlanText(text) {
+  let s = String(text || '').replace(/```(?:json)?/gi, '').trim();
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('没有找到计划内容，请把 AI 回复的整段内容粘贴进来');
+  s = s.slice(a, b + 1);
+  let j;
+  try { j = JSON.parse(s); } catch {
+    try { j = JSON.parse(s.replace(/,\s*([}\]])/g, '$1').replace(/[“”]/g, '"')); } catch { throw new Error('内容不完整或格式不对：让 AI「只输出完整的 JSON」再试一次'); }
+  }
+  const plan = j && j.ianzPlan && j.plan ? j.plan : j;
+  if (!plan || !Array.isArray(plan.days)) throw new Error('这不是训练计划的格式');
+  return plan;
+}
+/** Exercise photos for plans made outside the app: match names against the library. */
+function fillPlanImgs(def) {
+  const items = typeof libraryItems === 'function' ? libraryItems().filter((it) => it.img) : [];
+  const norm = (n) => String(n).replace(/[（(].*?[）)]/g, '').replace(/\s+/g, '');
+  def.days.forEach((d) => d.ex.forEach((e) => {
+    if (e.img) return;
+    const it = items.find((x) => norm(x.name) === norm(e.name));
+    if (it) e.img = it.img;
+  }));
+  return def;
+}
+const selfAiHtml = () => `<div class="card pim-self"><h3>用自己的 AI 转换（免费）</h3>
+    <ol class="tips small"><li>点下面按钮复制说明</li><li>打开豆包、Kimi、ChatGPT 等任意 AI，粘贴说明，再把训练计划（Excel、截图、文字都行）一起发过去</li><li>把 AI 回复的内容全部复制，粘贴到下面</li></ol>
+    <button class="btn block ghost" data-pim-prompt>📋 复制给 AI 的说明</button>
+    <textarea id="pimJson" rows="4" placeholder="把 AI 回复的内容粘贴到这里">${esc(pim.json || '')}</textarea>
+    <button class="btn block" data-pim-json>导入 AI 生成的计划</button></div>`;
+
 /* ---------- sheets ---------- */
 function openPlanImport() {
   pim = { files: [], text: '', busy: false, plan: null, err: '' };
@@ -111,11 +165,11 @@ const aiImportOn = () => typeof CLOUD_CONFIG !== 'undefined' && !!CLOUD_CONFIG.a
 function drawPlanImport() {
   if (pim.plan) return drawPlanPreview();
   if (!aiImportOn()) {
-    return openSheet('导入训练计划', `<p class="muted">打开朋友分享给你的计划文件（文件名以 <b>.ianzplan.json</b> 结尾），导入后可以先预览再使用，不用登录。</p>
-      <label class="btn block pim-pick">📎 选择计划文件<input type="file" id="pimFile" accept=".json,application/json" hidden></label>
+    return openSheet('导入训练计划', `<p class="muted">两种方式：用你自己手机上的 AI 把训练计划转换成 App 的格式，或者打开朋友分享的计划文件（.ianzplan.json）。导入后先预览再使用，不用登录。</p>
       ${pim.err ? `<p class="pim-err">${esc(pim.err)}</p>` : ''}
-      <div class="card"><h3>怎么分享计划</h3><p class="muted small">朋友在「挑战 → 切换计划」里，点他导入的计划下面的「分享」，把生成的文件通过微信等发给你；你在微信里把文件存到手机（「文件」App 或下载），再回到这里选择它。</p></div>
-      <p class="muted small">AI 识别 Excel / PDF / 照片暂未开放。</p>`, { type: 'planimport' });
+      ${selfAiHtml()}
+      <div class="card"><h3>打开朋友分享的计划文件</h3><p class="muted small">朋友在「挑战 → 切换计划」里点计划下面的「分享」，把文件发给你；你把文件存到手机（「文件」App 或下载），再在这里选择它。</p>
+        <label class="btn block ghost pim-pick">📎 选择计划文件<input type="file" id="pimFile" accept=".json,application/json" hidden></label></div>`, { type: 'planimport' });
   }
   const login = cloudEnabled() && cloud.user;
   openSheet('导入训练计划', `<p class="muted">把别人发给你的训练计划交给 AI：Excel、Word、PDF、照片 / 截图都可以，也能直接粘贴文字。AI 会按 App 的方式生成计划：主项按 1RM 百分比、辅助动作按双进阶自动加重，导入后可以先看再用。</p>
@@ -127,7 +181,8 @@ function drawPlanImport() {
     ${pim.busy ? '<div class="pim-busy"><span class="spin"></span><span>AI 正在读计划，通常需要 30–90 秒，请不要关闭…</span></div>'
       : login ? '<button class="btn block" data-pim-go>✨ AI 生成训练计划</button>'
       : '<button class="btn block" data-pim-login>登录后使用 AI 导入</button><p class="muted small">朋友分享的计划文件（.json）不用登录，直接选择文件就能导入。</p>'}
-    <p class="muted small">文件只用来生成这一次的计划，不会公开。每天最多 AI 导入 10 次。</p>`, { type: 'planimport' });
+    <p class="muted small">文件只用来生成这一次的计划，不会公开。每天最多 AI 导入 10 次。</p>
+    ${selfAiHtml()}`, { type: 'planimport' });
 }
 
 /** What one exercise does in week 1, e.g. "5×5 @75%" or "3×8–12 · 双进阶". */
@@ -216,7 +271,7 @@ function bindPlanImport() {
     for (const f of e.target.files) {
       try {
         const r = await readPlanFile(f);
-        if (r.plan) { pim.plan = normalizePlanDef({ ...r.plan, source: 'file' }, newPlanId()); break; }
+        if (r.plan) { pim.plan = fillPlanImgs(normalizePlanDef({ ...r.plan, source: 'file' }, newPlanId())); break; }
         if (!aiImportOn()) throw new Error('这不是计划文件。AI 识别暂未开放，现在只能导入别人分享的 .ianzplan.json 文件');
         if (r.kind === 'text' && !r.data.trim()) throw new Error('里面没有读到文字');
         if (pim.files.length >= 6) throw new Error('最多 6 个文件');
@@ -231,6 +286,14 @@ function bindPlanImport() {
     if (!b || pim.busy) return;
     if (b.dataset.pimRm !== undefined) { pim.text = $('#pimText').value; pim.files.splice(Number(b.dataset.pimRm), 1); drawPlanImport(); }
     else if (b.dataset.pimGo !== undefined) runPlanImport();
+    else if (b.dataset.pimPrompt !== undefined) copyText(PLAN_PROMPT, '已复制，粘贴给 AI，再把训练计划一起发过去');
+    else if (b.dataset.pimJson !== undefined) {
+      pim.json = $('#pimJson').value;
+      pim.err = '';
+      try { pim.plan = fillPlanImgs(normalizePlanDef({ ...parsePlanText(pim.json), source: 'ai' }, newPlanId())); }
+      catch (err) { pim.err = err.message; }
+      drawPlanImport();
+    }
     else if (b.dataset.pimLogin !== undefined) openLoginSheet();
     else if (b.dataset.pimUse !== undefined) savePlan(true);
     else if (b.dataset.pimSave !== undefined) savePlan(false);
