@@ -438,6 +438,27 @@ function persistWizard() {
   save();
 }
 
+/** What a program keeps while another one is in use, including the week it was left in (finished week → the next one). */
+function parkProgram(st, today) {
+  const pos = position(st, today);
+  return { startDate: st.startDate, schedule: st.schedule.slice(), tests: clone(st.tests || {}), weekAdjust: clone(st.weekAdjust || []),
+    cycleBreaks: clone(st.cycleBreaks || []), parkedAt: dateKey(today), parkedWeek: pos ? pos.weekAbs + (weekComplete(st, today) ? 1 : 0) : 0 };
+}
+/** Plans parked before parkedWeek was kept: the week after the last finished one, from the training records. */
+function lastTrainedWeek(st, prog) {
+  const keys = Object.keys(st.logs || {}).filter((k) => doneList(st.logs[k]).some((x) => programOfSession(x.sid) === prog)).sort();
+  if (!keys.length) return 0;
+  const last = parseKey(keys[keys.length - 1]);
+  const pos = position(st, last);
+  return pos ? pos.weekAbs + (weekComplete(st, last) ? 1 : 0) : 0;
+}
+/** Make today part of program week `wa` (absolute), keeping earlier records where they were. */
+function resumeAt(st, wa, today) {
+  const key = dateKey(today);
+  if (autoShift(st)) st.weekAdjust = (st.weekAdjust || []).filter((a) => a.date < key).concat({ date: key, wa });
+  else st.startDate = dateKey(addDays(periodOf(st) === 7 ? mondayOf(today) : today, -wa * periodOf(st)));
+}
+
 function finishWizard() {
   const d = wiz.draft;
   const editing = wiz.edit;
@@ -445,13 +466,19 @@ function finishWizard() {
   const newP = d.program || '531';
   const newStart = computeStart();
   d.programs = { ...(state.programs || {}) };
+  let resumeWeek = null;
   if (oldP !== newP) {
-    // Park the previous program's progress so switching back can continue it
-    if (state.onboarded) d.programs[oldP] = { startDate: state.startDate, schedule: state.schedule.slice(), tests: clone(state.tests || {}) };
+    // Park the previous program's progress so switching back can continue it — frozen at the week you left:
+    // a plan you are not training must not move on with the calendar.
+    if (state.onboarded) d.programs[oldP] = parkProgram(state, new Date());
     const saved = d.programs[newP];
-    d.tests = wiz.startOpt === 'keep' && saved ? clone(saved.tests || {}) : {};
+    const keep = wiz.startOpt === 'keep' && saved;
+    d.tests = keep ? clone(saved.tests || {}) : {};
+    d.weekAdjust = keep ? clone(saved.weekAdjust || []) : [];
+    d.cycleBreaks = keep ? clone(saved.cycleBreaks || []) : [];
+    if (keep) resumeWeek = saved.parkedWeek ?? lastTrainedWeek({ ...d, startDate: saved.startDate, logs: state.logs }, newP);
     delete d.programs[newP]; // the active program's settings live at the top level
-  } else if (newStart !== state.startDate) d.tests = {};
+  } else if (newStart !== state.startDate) { d.tests = {}; d.weekAdjust = []; d.cycleBreaks = []; }
   d.startDate = newStart;
   // switched between 按星期 and 按循环 but kept the progress: stay in the same program week
   const today0 = new Date();
@@ -464,6 +491,7 @@ function finishWizard() {
   d.wizStep = 0;
   d.logs = state.logs;
   state = d;
+  if (resumeWeek != null) resumeAt(state, resumeWeek, new Date());
   // Weeks already trained before using the app → mark as completed outside the app
   const today = new Date();
   const curWeek = wiz.startOpt === 'week' ? wiz.startWeek - 1 : wiz.startOpt === 'this' ? 0 : -1;
