@@ -130,7 +130,7 @@ function statsTabHtml() {
   if (!pos || !hist.length && !weeks.some((w) => w.app + w.offline)) {
     return `<div class="card"><h2>还没有统计数据</h2>
       <p class="muted">完成第一次训练后，这里会显示力量曲线、训练量、完成热力图和个人纪录。</p>
-      <p class="muted">如果之前已经在 App 外练过几周，可以在「挑战」里把那些训练标记为 📝 App 外完成。</p></div>${bodyweightCard(today)}`;
+      <p class="muted">如果之前已经在 App 外练过几周，可以在「训练计划」里把那些训练标记为 📝 App 外完成。</p></div>${bodyweightCard(today)}`;
   }
   const nApp = hist.filter((h) => !h.offline).length, nOff = hist.length - nApp;
   const totalVol = hist.reduce((a, h) => a + h.volume, 0);

@@ -1059,3 +1059,11 @@ body:has(.free-bar) .rest { z-index: 25; bottom: calc(84px + env(safe-area-inset
 .share-app .btn { margin-top: 8px; }
 .week-pick select[data-setround] { flex: none; }
 .girth { display: flex; flex-direction: column; } .girth input { margin-bottom: 2px; } .girth .small { font-size: 11px; }
+
+/* 我的挑战 */
+.goal .goal-bar { height: 10px; border-radius: 6px; background: var(--card-2); overflow: hidden; margin: 10px 0 6px; }
+.goal .goal-bar i { display: block; height: 100%; background: var(--primary); border-radius: 6px; transition: width .3s; }
+.goal.done { opacity: .75; }
+.goal.late .goal-bar i { background: var(--warn); }
+.goal-tools { gap: 8px; margin-top: 8px; justify-content: flex-end; }
+#view-goals > .btn { margin-bottom: 14px; }

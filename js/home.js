@@ -206,7 +206,7 @@ function homeWeek(t) {
   if (rp.plan.length || rp.unplaced.length) {
     html += `<div class="card"><h2>接下来</h2>
       ${rp.plan.map((p) => `<div class="row between line"><span>${WEEKDAYS[weekdayIdx(p.date)]} ${fmtDate(p.date)}</span><b>${sessionName(p.session, pos.week)}</b></div>`).join('')}
-      ${rp.unplaced.length ? `<p class="warn">本${unitOf()}可能练不完：${rp.unplaced.map((s) => sessionName(s, pos.week)).join('、')}。可以在「挑战」里把整个计划顺延。</p>` : ''}
+      ${rp.unplaced.length ? `<p class="warn">本${unitOf()}可能练不完：${rp.unplaced.map((s) => sessionName(s, pos.week)).join('、')}。可以在「训练计划」里把整个计划顺延。</p>` : ''}
       <p class="muted">根据你实际练了什么自动调整，并尽量避免连续两天练下肢。</p></div>`;
   }
   return html;

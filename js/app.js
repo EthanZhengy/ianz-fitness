@@ -2,8 +2,8 @@
 /* Shell: navigation, rendering, boot. */
 
 let currentView = 'home';
-const TABS = [['home', '训练', 'train'], ['challenge', '挑战', 'challenge'], ['library', '动作', 'library'], ['friends', '社区', 'square'], ['history', '历史', 'history'], ['me', '我的', 'me']];
-const RENDER = { home: renderHome, challenge: renderChallenge, library: renderLibrary, history: renderHistory, me: renderMe, workout: renderWorkout, friends: renderFriends, market: renderMarket };
+const TABS = [['home', '训练', 'train'], ['challenge', '计划', 'challenge'], ['library', '动作', 'library'], ['friends', '社区', 'square'], ['history', '历史', 'history'], ['me', '我的', 'me']];
+const RENDER = { home: renderHome, challenge: renderChallenge, library: renderLibrary, history: renderHistory, me: renderMe, goals: renderGoals, workout: renderWorkout, friends: renderFriends, market: renderMarket };
 
 function render() {
   registerCustomPrograms(state);
@@ -42,7 +42,7 @@ document.addEventListener('click', (e) => {
   wkMode = 'plan'; currentView = 'home'; homeTab = 'today'; render(); window.scrollTo(0, 0);
 });
 
-bindCloud(); bindWizard(); bindHome(); bindSheet(); bindWorkout(); bindFree(); bindChallenge(); bindLibrary(); bindHistory(); bindNutrition(); bindSettings(); bindMe(); bindFriends(); bindCommunity(); bindMarket(); bindStories(); bindQuotes(); bindPush(); bindPhotos(); bindExHistory(); bindPlanImport();
+bindCloud(); bindWizard(); bindHome(); bindSheet(); bindWorkout(); bindFree(); bindChallenge(); bindLibrary(); bindHistory(); bindNutrition(); bindSettings(); bindMe(); bindFriends(); bindCommunity(); bindMarket(); bindStories(); bindQuotes(); bindPush(); bindPhotos(); bindExHistory(); bindPlanImport(); bindGoals();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {

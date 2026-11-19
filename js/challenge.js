@@ -1,5 +1,5 @@
 'use strict';
-/* ================= 挑战: the active training program, week by week ================= */
+/* ================= 训练计划 (tab key 'challenge'): the active training program, week by week ================= */
 
 const BADGE = {
   app: '<span class="badge app">✓ App 完成</span>',
@@ -121,7 +121,10 @@ function renderChallenge() {
     return orderFor(wk).slice(0, requiredFor(wk)).every((sid) => ['app', 'offline', 'skipped'].includes(sessionStatus(state, wa, sid, today).status));
   }).length;
   const C = 2 * Math.PI * 42;
-  let html = `<div class="page-head"><h1>挑战</h1><button class="pill-btn big" data-act="switch-program">切换计划</button></div>
+  const goals = (state.goals || []).filter((g) => !g.doneAt);
+  const g0 = goals[0] && goalProgress(goals[0]);
+  let html = `<div class="page-head"><h1>训练计划</h1><button class="pill-btn big" data-act="switch-program">切换计划</button></div>
+    <button class="card mk-entry" data-act="goals"><span class="mk-entry-ic">🎯</span><span class="grow"><b>我的挑战</b><span class="muted small">${goals.length ? `${goals.length} 个进行中 · ${esc(goalTitle(goals[0]))} ${Math.round(g0.frac * 100)}%` : '给自己定个目标：卧推破 100kg、减到 70kg……'}</span></span><span class="muted">›</span></button>
     <button class="card mk-entry" data-act="market"><span class="mk-entry-ic">🏆</span><span class="grow"><b>大神方案</b><span class="muted small">看看别人怎么练，一键加入自己的训练模板</span></span><span class="muted">›</span></button>
     <div class="card challenge-hero">
       <div class="ring big r-main"><div class="ring-fig"><svg viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="42"/>
@@ -255,6 +258,7 @@ function bindChallenge() {
     if (a === 'edit-lifts') startWizard(true, null, 'lifts');
     else if (a === 'switch-program') openProgramPicker();
     else if (a === 'market') openMarket();
+    else if (a === 'goals') openGoals('challenge');
     else if (a === 'plan-share') sharePlanFile(progOf().id);
     else if (a === 'postpone' && confirm(`把整个计划往后推一${unitOf() === '周' ? '周' : '个循环'}？（重新按当前这一${unitOf()}的内容练）`)) { state.startDate = dateKey(addDays(parseKey(state.startDate), periodOf())); save(); render(); toast('已顺延'); }
     else if (a === 'advance' && confirm(`把计划往前调一${unitOf() === '周' ? '周' : '个循环'}？（相当于跳到下一${unitOf()}）`)) { state.startDate = dateKey(addDays(parseKey(state.startDate), -periodOf())); save(); render(); }

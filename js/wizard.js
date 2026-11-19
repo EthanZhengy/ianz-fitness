@@ -148,7 +148,7 @@ function renderWizard() {
         <div class="chips">${Object.entries(GOALS).map(([k, g]) => chip(g.label, `data-goal="${k}"`, p.goal === k)).join('')}</div>`;
       break;
     case 'program':
-      body = `<h2>选择训练计划</h2><p class="muted">之后随时可以在「挑战」页切换，训练记录都会保留。</p>
+      body = `<h2>选择训练计划</h2><p class="muted">之后随时可以在「训练计划」页切换，训练记录都会保留。</p>
         <button class="card mk-entry" data-act="plan-import"><span class="mk-entry-ic">✨</span><span class="grow"><b>导入训练计划</b><span class="muted small">${CLOUD_CONFIG.aiImport ? '上传 Excel / PDF / Word / 图片，AI 自动生成计划；也能打开朋友分享的计划文件' : '用自己的 AI 转换，或打开朋友分享的计划文件'}</span></span><span class="muted">›</span></button>
         ${Object.values(PROGRAMS).filter((pr) => progVisible(pr, d.program)).map((pr) => `<button class="prog-card${d.program === pr.id ? ' on' : ''}" data-prog="${pr.id}">
           <div class="row between"><b>${esc(pr.name)}</b>${d.program === pr.id ? '<span class="tag">已选</span>' : ''}</div>
@@ -198,7 +198,7 @@ function renderWizard() {
           ${chip('我已经在练了', 'data-start="week"', wiz.startOpt === 'week')}
         </div>
         ${wiz.startOpt === 'week' ? `<label>现在是第几${unitOf(d)}</label><select data-start-week>${Array.from({ length: P.weeks }, (_, i) => `<option value="${i + 1}" ${wiz.startWeek === i + 1 ? 'selected' : ''}>第 ${i + 1} ${unitOf(d)} · ${weekName(i + 1, d)}</option>`).join('')}</select>
-          ${wiz.startWeek > 1 ? `<p class="muted">第 1–${wiz.startWeek - 1} ${unitOf(d)}会标记为 <span class="badge offline">📝 App 外完成</span>，之后可以在「挑战」里逐次修改。</p>` : ''}` : ''}
+          ${wiz.startWeek > 1 ? `<p class="muted">第 1–${wiz.startWeek - 1} ${unitOf(d)}会标记为 <span class="badge offline">📝 App 外完成</span>，之后可以在「训练计划」里逐次修改。</p>` : ''}` : ''}
         ${wiz.startOpt === 'this' || wiz.startOpt === 'week' ? `<label>这${isPPL(d) ? '个循环' : '周'}已经练过哪些？（在 App 外完成的）</label>
           <div class="chips">${orderFor(startWeekNow, d).map((s) => chip(sessionName(s, startWeekNow), `data-done-now="${s}"`, wiz.doneNow.includes(s))).join('')}</div>` : ''}
         ${isMike(d) || isPPL(d) || isIan(d) || isCustom(d) ? '' : preferencesHtml(d)}`;

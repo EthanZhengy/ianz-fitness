@@ -208,6 +208,7 @@ const ME_PAGES = {
   account: ['账号与同步', 'cloud', () => accountCard()],
   look: ['外观、字体与语录', 'gear', () => lookHtml()],
   team: ['团队', 'info', () => teamHtml()],
+  goals: ['我的挑战', 'challenge', () => ''],
   share: ['分享 App', 'share', () => shareAppHtml()],
 };
 
@@ -291,7 +292,7 @@ function renderMe() {
         <div class="me-id">${cloud.user ? `<span class="ok">✓ 已登录</span> ${esc(accountLabel())}` : cloudEnabled() ? '未登录 · 数据仅保存在本机' : '本机模式'}</div></div></div>
     ${banner}
     <div class="me-stats"><div><b>${n}</b><span>累计训练</span></div><div><b>${pos ? `${pos.week}<small>/${progOf().weeks}</small>` : '—'}</b><span>当前周</span></div><div><b>${p.weight}<small>kg</small></b><span>体重</span></div></div>
-    <div class="menu">${row('body', `${p.height}cm · ${GOALS[p.goal].label}`)}${row('nutrition', dietOn() ? '' : '已隐藏')}${row('training')}${row('rm')}</div>
+    <div class="menu">${row('goals', (state.goals || []).filter((g) => !g.doneAt).length ? `${(state.goals || []).filter((g) => !g.doneAt).length} 个进行中` : '')}${row('body', `${p.height}cm · ${GOALS[p.goal].label}`)}${row('nutrition', dietOn() ? '' : '已隐藏')}${row('training')}${row('rm')}</div>
     <div class="menu">${row('look', `${{ dark: '暗色调', light: '亮色调', auto: '跟随系统' }[(state.appearance || {}).mode || 'dark']}${quotesOn() ? '' : ' · 语录已关'}`)}${row('reminders', state.reminders.enabled ? '已开启' : '')}${row('data')}${row('install')}${row('share')}${row('team')}</div>
     ${cloud.user ? `<div class="menu">${row('account')}<button class="menu-row danger" data-act="logout"><span class="mi">${ICONS.logout}</span><span class="grow">退出登录</span></button></div>` : ''}
     <p class="muted center pad">Ianz Fitness · 版本 ${APP_VERSION} · <a href="plans.html">训练计划介绍</a> · <a href="privacy.html">隐私政策</a> · <a href="terms.html">用户协议</a></p>`;
@@ -303,6 +304,7 @@ function bindMe() {
   root.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.meSub === 'goals') return openGoals('me');
     if (b.dataset.meSub) { meSub = b.dataset.meSub; render(); window.scrollTo(0, 0); }
     else if (b.dataset.act === 'me-back') { meSub = null; render(); }
     else if (b.dataset.act === 'me-profile') { profDraft = null; openProfileEdit(); }

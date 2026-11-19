@@ -168,7 +168,7 @@ function drawPlanImport() {
     return openSheet('导入训练计划', `<p class="muted">两种方式：用你自己手机上的 AI 把训练计划转换成 App 的格式，或者打开朋友分享的计划文件（.ianzplan.json）。导入后先预览再使用，不用登录。</p>
       ${pim.err ? `<p class="pim-err">${esc(pim.err)}</p>` : ''}
       ${selfAiHtml()}
-      <div class="card"><h3>打开朋友分享的计划文件</h3><p class="muted small">朋友在「挑战 → 切换计划」里点计划下面的「分享」，把文件发给你；你把文件存到手机（「文件」App 或下载），再在这里选择它。</p>
+      <div class="card"><h3>打开朋友分享的计划文件</h3><p class="muted small">朋友在「训练计划 → 切换计划」里点计划下面的「分享」，把文件发给你；你把文件存到手机（「文件」App 或下载），再在这里选择它。</p>
         <label class="btn block ghost pim-pick">📎 选择计划文件<input type="file" id="pimFile" accept=".json,application/json" hidden></label></div>`, { type: 'planimport' });
   }
   const login = cloudEnabled() && cloud.user;
